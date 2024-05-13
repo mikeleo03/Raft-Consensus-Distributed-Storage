@@ -86,6 +86,7 @@ class TestKVStore(unittest.TestCase):
         log = {'term': 1, 'command': 'ping', 'value': ''}
         kv_store.executing_log(log)
         self.assertEqual(log['value'], "PONG")
+        print("✅ Unit test ping passed")
 
     def test_set_and_get(self):
         kv_store = KVStore()
@@ -96,6 +97,7 @@ class TestKVStore(unittest.TestCase):
         log_get = {'term': 2, 'command': 'get kunci', 'value': ''}
         kv_store.executing_log(log_get)
         self.assertEqual(log_get['value'], "value")
+        print("✅ Unit test set and get passed")
 
     def test_append(self):
         kv_store = KVStore()
@@ -110,6 +112,7 @@ class TestKVStore(unittest.TestCase):
         log_get = {'term': 3, 'command': 'get kunci', 'value': ''}
         kv_store.executing_log(log_get)
         self.assertEqual(log_get['value'], "valuevalue")
+        print("✅ Unit test append passed")
 
     def test_delete(self):
         kv_store = KVStore()
@@ -124,6 +127,7 @@ class TestKVStore(unittest.TestCase):
         log_get = {'term': 3, 'command': 'get kunci', 'value': ''}
         kv_store.executing_log(log_get)
         self.assertEqual(log_get['value'], "")
+        print("✅ Unit test del passed")
         
     def test_strlen(self):
         kv_store = KVStore()
@@ -134,6 +138,8 @@ class TestKVStore(unittest.TestCase):
         log_get = {'term': 2, 'command': 'strln kunci', 'value': ''}
         kv_store.executing_log(log_get)
         self.assertEqual(log_get['value'], 5)
+        print("✅ Unit test strln passed")
 
 if __name__ == '__main__':
-    unittest.main()
+    print("Running unit tests...")
+    unittest.main(verbosity=0)
