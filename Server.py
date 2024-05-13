@@ -15,7 +15,7 @@ def start_serving(addr: Address, contact_node_addr: Address):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: server.py ip port [contact_ip] [contact_port]")
+        print("Usage: Server.py ip port [contact_ip] [contact_port]")
         exit()
 
     contact_addr = None
