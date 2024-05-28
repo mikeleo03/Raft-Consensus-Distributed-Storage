@@ -6,21 +6,25 @@ from xmlrpc.client import ServerProxy
 
 
 class RPCHandler:
-    def __init__(self):
+    def __init__(self, id: str | None = None):
         self.message_parser = MessageParser()
+        self.id = id
+        
+    def __logging(self, message: str):
+        print(f"[RPCHandler-{self.id}] {message}")
 
     def __call(self, addr: Address, rpc_name: str, message: BaseMessage):
         node = ServerProxy(f"http://{addr.ip}:{addr.port}")
         json_request = self.message_parser.serialize(message)
-        print(f"Sending request to {addr.ip}:{addr.port}...")
+        self.__logging(f"Sending request to {addr.ip}:{addr.port}...")
         rpc_function = getattr(node, rpc_name)
 
         try:
             response = rpc_function(json_request)
-            print(f"Response from {addr.ip}:{addr.port}: {response}")
+            self.__logging(f"Response from {addr.ip}:{addr.port}: {response}")
             return response
         except Exception as e:
-            print(f"Error while sending request to {addr.ip}:{addr.port}: {e}")
+            self.__logging(f"Error while sending request to {addr.ip}:{addr.port}: {e}")
             # TODO : Handle error
 
     def request(self, addr: Address, rpc_name: str, message: BaseMessage):
@@ -39,7 +43,7 @@ class RPCHandler:
 
         # TODO: handle fail response
         if response["status"] == ResponseStatus.FAILED.value:
-            print("Failed to send request")
+            self.__logging("Failed to send request")
 
         response["address"] = redirect_addr
         return response
