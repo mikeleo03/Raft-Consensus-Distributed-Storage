@@ -1,9 +1,8 @@
-from messages.Base import BaseMessage
+from messages.Base import BaseRequest, BaseResponse
 
-class ExecuteRequest(BaseMessage):
-    # TODO : Add fields
-    ...
+class ExecuteRequest(BaseRequest):
+    command: str
+    value: str
 
-class ExecuteResponse(BaseMessage):
-    # TODO : Add fields
-    ...
+class ExecuteResponse(BaseResponse):
+    data: dict
