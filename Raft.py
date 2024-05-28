@@ -1,7 +1,7 @@
 import asyncio
 from threading     import Thread
 from xmlrpc.client import ServerProxy
-from typing        import Any, List
+from typing        import Any, List, TypedDict
 from enum          import Enum
 from Address       import Address
 import time
@@ -11,29 +11,72 @@ from structs.NodeType import NodeType
 from app import KVStore
 from structs.Log import Log
 
+from messages.Base import BaseMessage, ResponseStatus
+from messages.Execute import ExecuteRequest, ExecuteResponse
+from utils.MessageParser import MessageParser
+from utils.RPCHandler import RPCHandler
+from structs.Log import Log
+from StableStorage import StableStorage
+        
 
 class RaftNode:
     HEARTBEAT_INTERVAL   = 1
     ELECTION_TIMEOUT_MIN = 2
     ELECTION_TIMEOUT_MAX = 3
     RPC_TIMEOUT          = 0.5
+    
+    class NodeType(Enum):
+        FOLLOWER = 1
+        CANDIDATE = 2
+        LEADER = 3
+    
+    class StableVars(TypedDict):
+        election_term: int
+        voted_for: Address     
+        log: List[Log] 
+        commit_length: int
 
     def __init__(self, application : KVStore, addr: Address, contact_addr: Address = None):
         socket.setdefaulttimeout(RaftNode.RPC_TIMEOUT)
         self.address:             Address           = addr
         self.type:                NodeType          = NodeType.FOLLOWER
-        self.log:                 List[Log]    = []
-        self.app:                 KVStore               = application
+        self.log:                 List[Log]         = []
+        self.app:                 KVStore           = application
         self.election_term:       int               = 0
         self.cluster_addr_list:   List[Address]     = []
         self.cluster_leader_addr: Address           = None
+        
+        # Get state from stable storage
+        self.__fetch_stable_storage()
+        
+        # Additional vars
+        self.cluster_addr_list:   List[Address]     = [] 
+        self.message_parser:      MessageParser     = MessageParser()
+        self.rpc_handler:         RPCHandler        = RPCHandler()
+        
         if contact_addr is None:
             self.cluster_addr_list.append(self.address)
             self.__initialize_as_leader()
         else:
             self.__try_to_apply_membership(contact_addr)
 
+    def __fetch_stable_storage(self):
+        self.stable_storage = StableStorage[RaftNode.StableVars](self.address)
+        loaded = self.stable_storage.try_load()
+        if loaded is not None:
+            self.__print_log(f"Loaded stable storage: {loaded}")
+            return
 
+        self.__init_stable()
+
+    def __init_stable(self):
+        data = RaftNode.StableVars({
+            'election_term': 0,
+            'voted_for': None,
+            'log': [],
+            'commit_length': 0,
+        })
+        self.stable_storage.storeAll(data)
 
     # Internal Raft Node methods
     def __print_log(self, text: str):
@@ -137,6 +180,7 @@ class RaftNode:
             # Majority of acks received, consider the log entry committed
             self.__print_log("Majority of acks received. Log entry committed.")
             # Commit the log entry to the state machine by applying the command
+            print("Entries", entries)
             for entry in entries:
                 self.app.executing_log(entry)
         else:
@@ -184,8 +228,45 @@ class RaftNode:
     
     
     # Client RPCs
-    def execute(self, json_request: str) -> "json":
-        request = json.loads(json_request)
-        return json.dumps(request)
+    def execute(self, json_request: str) -> str:
+        try:
+            # Interface to client only sent to leader
+            print("Masuk sini 1")
+            """ if self.type != RaftNode.NodeType.LEADER:
+                return self.message_parser.serialize(ExecuteResponse({
+                    "status": ResponseStatus.REDIRECTED.value,
+                    "address": self.cluster_leader_addr,
+                })) """
+
+            # Deserialize the request
+            request: ExecuteReq = self.message_parser.deserialize(json_request)
+            
+            # Add to stable storage
+            with self.stable_storage as stable_vars:
+                log = Log({
+                    "term": stable_vars["election_term"],
+                    "command": request["command"],
+                    "value": request["value"],
+                })
+
+                stable_vars["log"].append(log)
+                self.stable_storage.storeAll(stable_vars)
+
+            # Execution response
+            response = ExecuteResponse({
+                "status": ResponseStatus.ONPROCESS.value,
+                "address": self.address,
+            })
+            
+            # Send the serialized response
+            return self.message_parser.serialize(response)
+        
+        except Exception as e:
+            self.__print_log(str(e))
+            return self.message_parser.serialize(ExecuteResponse({
+                "status": ResponseStatus.FAILED.value,
+                "address": self.address,
+                "reason": str(e), 
+            }))
         
 
