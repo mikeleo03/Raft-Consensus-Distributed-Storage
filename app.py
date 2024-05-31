@@ -27,11 +27,7 @@ class KVStore:
         self.store[key] = self.store.get(key, "") + value
         return "OK"
 
-    def executing_log(self, log: Log):
-        # Get the value from log
-        command = log['command']
-        
-        # Split the command parts
+    def _execute_single_command(self, command):
         command_parts = command.split()
         if len(command_parts) < 1:
             return "Invalid command"
@@ -40,42 +36,50 @@ class KVStore:
         if command_name not in self.ALLOWED_COMMANDS:
             return "Invalid command"
 
-        # If else handle based on each command
         if command_name == "ping":
-            log['value'] = self.__ping()
+            return self.__ping()
             
         elif command_name == "get":
             if len(command_parts) < 2:
                 return "Invalid command"
             key = command_parts[1]
-            log['value'] = self.__get(key)
+            return self.__get(key)
             
         elif command_name == "set":
             if len(command_parts) < 3:
                 return "Invalid command"
             key = command_parts[1]
             value = " ".join(command_parts[2:])
-            log['value'] = self.__set(key, value)
+            return self.__set(key, value)
         
         elif command_name == "strln":
             if len(command_parts) < 2:
                 return "Invalid command"
             key = command_parts[1]
-            log['value'] = self.__strln(key)
+            return self.__strln(key)
         
         elif command_name == "del":
             if len(command_parts) < 2:
                 return "Invalid command"
             key = command_parts[1]
-            log['value'] = self.__delete(key)
+            return self.__delete(key)
         
         elif command_name == "append":
             if len(command_parts) < 3:
                 return "Invalid command"
             key = command_parts[1]
             value = " ".join(command_parts[2:])
-            log['value'] = self.__append(key, value)
+            return self.__append(key, value)
         
+    def executing_log(self, log: Log):
+        commands = log['command'].split('; ')
+        result = ""
+        for command in commands:
+            result = self._execute_single_command(command.strip())
+            if result == "Invalid command":
+                break
+        log['value'] = result
+
     def data(self):
         return self.store
     
@@ -139,6 +143,13 @@ class TestKVStore(unittest.TestCase):
         kv_store.executing_log(log_get)
         self.assertEqual(log_get['value'], 5)
         print("✅ Unit test strln passed")
+
+    def test_transaction(self):
+        kv_store = KVStore()
+        log_transaction = {'term': 1, 'command': 'set kunci value; append kunci 123; get kunci', 'value': ''}
+        kv_store.executing_log(log_transaction)
+        self.assertEqual(log_transaction['value'], "value123")
+        print("✅ Unit test transaction passed")
 
 if __name__ == '__main__':
     print("Running unit tests...")
