@@ -3,6 +3,7 @@ from Address import Address
 from xmlrpc.client import ServerProxy
 from typing import List
 from utils.RPCHandler import RPCHandler
+from messages.Execute import ExecuteRequest, ExecuteResponse
 
 
 if __name__ == "__main__":
@@ -22,6 +23,9 @@ if __name__ == "__main__":
                 print(resp)
             else:
                 # Which means, the command is "execute", Executing the request
-                # TODO : Handle the execute
-                resp = "Hola"
+                req = ExecuteRequest({
+                    "command": " ".join(inp[0:]),
+                    "value": " "
+                })
+                resp = rpc_handler.request(server_addr, "execute", req)
                 print(resp)
