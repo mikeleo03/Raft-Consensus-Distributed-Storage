@@ -53,12 +53,15 @@ class RaftNode:
 
     async def __leader_heartbeat(self):
         # TODO : Send periodic heartbeat
-
-        while True:
-            #listen to keyboard interrupt
+        while self.type == NodeType.Leader:
             self.__print_log("[Leader] Sending heartbeat...")
-            pass
+            for addr in self.cluster_addr_list:
+                if(self.address != addr):
+                    self.send_heartbeat_msg(addr)
             await asyncio.sleep(RaftNode.HEARTBEAT_INTERVAL)
+
+    def send_heartbeat_msg(self, addr):
+        return
 
     def __try_to_apply_membership(self, contact_addr: Address):
         redirected_addr = contact_addr
