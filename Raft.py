@@ -135,6 +135,7 @@ class RaftNode:
 
     def __try_to_apply_membership(self, contact_addr: Address):
         redirected_addr = contact_addr
+        retry_count = 0
         response = {
             "status": "redirected",
             "address": {
@@ -143,12 +144,22 @@ class RaftNode:
             }
         }
         while response["status"] != "success":
-            redirected_addr = Address(response["address"]["ip"], response["address"]["port"])
-            response        = self.__send_request({"address" : self.address},"apply_membership", redirected_addr)
-        self.log                 = response["log"]
-        self.cluster_addr_list   = response["cluster_addr_list"]
-        self.cluster_leader_addr = redirected_addr
-        print(self.cluster_addr_list, self.cluster_leader_addr)
+            try :
+                redirected_addr = Address(response["address"]["ip"], response["address"]["port"])
+                response        = self.__send_request({"address" : self.address},"apply_membership", redirected_addr)
+            except :
+                if (retry_count < 5) :
+                    print("Didn't get response from leader, retrying...")
+                    time.sleep(RaftNode.HEARTBEAT_INTERVAL)
+                    retry_count += 1
+                else :
+                    print("Leader failed to response 5 times, aborting membership application")
+                    break
+        if (response["status"] == "success") :
+            self.log                 = response["log"]
+            self.cluster_addr_list   = response["cluster_addr_list"]
+            self.cluster_leader_addr = redirected_addr
+            print(self.cluster_addr_list, self.cluster_leader_addr)
 
     def __send_request(self, request: BaseMessage, rpc_name: str, addr: Address) -> "json":
         # Warning : This method is blocking
