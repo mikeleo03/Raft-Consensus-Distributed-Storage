@@ -27,7 +27,7 @@ class RPCHandler:
             self.__logging(f"Error while sending request to {addr.ip}:{addr.port}: {e}")
             # TODO : Handle error
 
-    def request(self, addr: Address, rpc_name: str, message: BaseMessage):
+    def request(self, addr: Address, rpc_name: str, message: BaseMessage) -> BaseResponse:
         redirect_addr = addr
         response = BaseResponse({
             'status': ResponseStatus.REDIRECTED.value,

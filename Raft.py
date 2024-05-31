@@ -10,6 +10,7 @@ import json
 from structs.NodeType import NodeType
 from app import KVStore
 from structs.Log import Log
+from structs.ColorLog import ColorLog
 
 from messages.Base import BaseMessage, BaseResponse, ResponseStatus
 from messages.Execute import ExecuteRequest, ExecuteResponse
@@ -45,6 +46,7 @@ class RaftNode:
         self.election_term:       int               = 0
         self.cluster_addr_list:   List[Address]     = []
         self.cluster_leader_addr: Address           = None
+        self.current_time:        float             = time.time()
         
         # Get state from stable storage
         self.__fetch_stable_storage()
@@ -80,7 +82,7 @@ class RaftNode:
 
     # Internal Raft Node methods
     def __print_log(self, text: str):
-        print(f"[{self.address}] [{time.strftime('%H:%M:%S')}] {text}")
+        print(ColorLog.OKBLUE.value + f"[{self.address}]" + ColorLog.ENDC.value + f"[{time.strftime('%H:%M:%S')}] {text}")
 
     def __initialize_as_leader(self):
         self.__print_log("Initialize as leader node...")
@@ -96,12 +98,21 @@ class RaftNode:
 
     async def __leader_heartbeat(self):
         # TODO : Send periodic heartbeat
-
+    
         while True:
-            #listen to keyboard interrupt
-            self.__print_log("[Leader] Sending heartbeat...")
-            pass
-            await asyncio.sleep(RaftNode.HEARTBEAT_INTERVAL)
+            if(time.time() - self.current_time > RaftNode.HEARTBEAT_INTERVAL):
+                self.__print_log("[Leader] Sending heartbeat...")
+                self.current_time = time.time()
+            if(self.election_term == 0xDEAD): 
+                self.__print_log("Stopping Leader Server...")
+
+            
+
+        # while True:
+        #     #listen to keyboard interrupt
+        #     self.__print_log("[Leader] Sending heartbeat...")
+        #     pass
+        #     await asyncio.sleep(RaftNode.HEARTBEAT_INTERVAL)
 
     def apply_membership(self, req) :
         try :
@@ -115,7 +126,7 @@ class RaftNode:
                     "reason" : "",
                     "log" : self.log
                 }
-                print("Accepted a new follower :", req["address"])
+                self.__print_log("Accepted a new follower :", req["address"])
                 return self.message_parser.serialize(response)
             else :
                 response = {
@@ -277,7 +288,7 @@ class RaftNode:
                 })) """
 
             # Deserialize the request
-            request: ExecuteReq = self.message_parser.deserialize(json_request)
+            request: ExecuteRequest = self.message_parser.deserialize(json_request)
             
             # Execution response
             self.app.executing_log(request)
