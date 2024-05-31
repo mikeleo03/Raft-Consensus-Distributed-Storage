@@ -10,10 +10,13 @@ import threading
 def start_serving(addr: Address, contact_node_addr: Address):
     print(f"Starting Raft Server at {addr.ip}:{addr.port}")
     _raftNode = RaftNode(KVStore(), addr, contact_node_addr)
-    with SimpleXMLRPCServer((addr.ip, addr.port)) as server:
-        server.register_introspection_functions()
-        server.register_instance(_raftNode)
-        server.serve_forever()
+    try:
+        with SimpleXMLRPCServer((addr.ip, addr.port)) as server:
+            server.register_introspection_functions()
+            server.register_instance(_raftNode)
+            server.serve_forever()
+    except KeyboardInterrupt:
+        _raftNode.election_term = 0xDEAD
    
 
 if __name__ == "__main__":

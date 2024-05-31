@@ -10,8 +10,9 @@ import json
 from structs.NodeType import NodeType
 from app import KVStore
 from structs.Log import Log
+from structs.ColorLog import ColorLog
 
-from messages.Base import BaseMessage, ResponseStatus
+from messages.Base import BaseMessage, BaseResponse, ResponseStatus
 from messages.Execute import ExecuteRequest, ExecuteResponse
 from utils.MessageParser import MessageParser
 from utils.RPCHandler import RPCHandler
@@ -45,6 +46,7 @@ class RaftNode:
         self.election_term:       int               = 0
         self.cluster_addr_list:   List[Address]     = []
         self.cluster_leader_addr: Address           = None
+        self.current_time:        float             = time.time()
         
         # Get state from stable storage
         self.__fetch_stable_storage()
@@ -80,7 +82,7 @@ class RaftNode:
 
     # Internal Raft Node methods
     def __print_log(self, text: str):
-        print(f"[{self.address}] [{time.strftime('%H:%M:%S')}] {text}")
+        print(ColorLog.OKBLUE.value + f"[{self.address}]" + ColorLog.ENDC.value + f"[{time.strftime('%H:%M:%S')}] {text}")
 
     def __initialize_as_leader(self):
         self.__print_log("Initialize as leader node...")
@@ -96,18 +98,60 @@ class RaftNode:
 
     async def __leader_heartbeat(self):
         # TODO : Send periodic heartbeat
-        while self.type == NodeType.Leader:
-            self.__print_log("[Leader] Sending heartbeat...")
-            for addr in self.cluster_addr_list:
-                if(self.address != addr):
-                    self.send_heartbeat_msg(addr)
-            await asyncio.sleep(RaftNode.HEARTBEAT_INTERVAL)
+        while self.type == NodeType.LEADER:
+            if(time.time() - self.current_time > RaftNode.HEARTBEAT_INTERVAL):
+                self.__print_log("[Leader] Sending heartbeat...")
+                for addr in self.cluster_addr_list:
+                    if(self.address != addr):
+                        self.send_heartbeat_msg(addr)
+                self.current_time = time.time()
+            if(self.election_term == 0xDEAD): 
+                self.__print_log("Stopping Leader Server...")
+
 
     def send_heartbeat_msg(self, addr):
         return
+            
+
+        # while True:
+        #     #listen to keyboard interrupt
+        #     self.__print_log("[Leader] Sending heartbeat...")
+        #     pass
+        #     await asyncio.sleep(RaftNode.HEARTBEAT_INTERVAL)
+
+    def apply_membership(self, req) :
+        try :
+            if (self.type == NodeType.LEADER) :
+                req = self.message_parser.deserialize(req)
+                self.cluster_addr_list.append(req["address"])
+                response = {
+                    "status": ResponseStatus.SUCCESS.value,
+                    "address": self.address,
+                    "cluster_addr_list" : self.cluster_addr_list,
+                    "reason" : "",
+                    "log" : self.log
+                }
+                self.__print_log("Accepted a new follower :", req["address"])
+                return self.message_parser.serialize(response)
+            else :
+                response = {
+                    "status": ResponseStatus.REDIRECTED.value,
+                    "address": self.cluster_leader_addr,
+                    "reason" : "NOT LEADER"
+                }
+                return self.message_parser.serialize(response)
+        except Exception as e:
+            self.__print_log(str(e))
+            return self.message_parser.serialize(BaseResponse({
+                "status": ResponseStatus.FAILED.value,
+                "address": self.address,
+                "reason": str(e), 
+            }))
+
 
     def __try_to_apply_membership(self, contact_addr: Address):
         redirected_addr = contact_addr
+        retry_count = 0
         response = {
             "status": "redirected",
             "address": {
@@ -116,18 +160,26 @@ class RaftNode:
             }
         }
         while response["status"] != "success":
-            redirected_addr = Address(response["address"]["ip"], response["address"]["port"])
-            response        = self.__send_request(self.address, "apply_membership", redirected_addr)
-        self.log                 = response["log"]
-        self.cluster_addr_list   = response["cluster_addr_list"]
-        self.cluster_leader_addr = redirected_addr
+            try :
+                redirected_addr = Address(response["address"]["ip"], response["address"]["port"])
+                response        = self.__send_request({"address" : self.address},"apply_membership", redirected_addr)
+            except :
+                if (retry_count < 5) :
+                    print("Didn't get response from leader, retrying...")
+                    time.sleep(RaftNode.HEARTBEAT_INTERVAL)
+                    retry_count += 1
+                else :
+                    print("Leader failed to response 5 times, aborting membership application")
+                    break
+        if (response["status"] == "success") :
+            self.log                 = response["log"]
+            self.cluster_addr_list   = response["cluster_addr_list"]
+            self.cluster_leader_addr = redirected_addr
+            print(self.cluster_addr_list, self.cluster_leader_addr)
 
-    def __send_request(self, request: Any, rpc_name: str, addr: Address) -> "json":
+    def __send_request(self, request: BaseMessage, rpc_name: str, addr: Address) -> "json":
         # Warning : This method is blocking
-        node         = ServerProxy(f"http://{addr.ip}:{addr.port}")
-        json_request = json.dumps(request)
-        rpc_function = getattr(node, rpc_name)
-        response     = json.loads(rpc_function(json_request))
+        response     = self.rpc_handler.request(addr, rpc_name, request)
         self.__print_log(response)
         return response
 
@@ -241,7 +293,7 @@ class RaftNode:
                 })) """
 
             # Deserialize the request
-            request: ExecuteReq = self.message_parser.deserialize(json_request)
+            request: ExecuteRequest = self.message_parser.deserialize(json_request)
             
             # Execution response
             self.app.executing_log(request)
