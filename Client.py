@@ -28,4 +28,3 @@ if __name__ == "__main__":
                     "value": " "
                 })
                 resp = rpc_handler.request(server_addr, "execute", req)
-                print(resp)

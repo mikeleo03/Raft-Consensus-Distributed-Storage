@@ -234,7 +234,6 @@ class RaftNode:
     def execute(self, json_request: str) -> str:
         try:
             # Interface to client only sent to leader
-            print("Masuk sini 1")
             """ if self.type != RaftNode.NodeType.LEADER:
                 return self.message_parser.serialize(ExecuteResponse({
                     "status": ResponseStatus.REDIRECTED.value,
@@ -243,6 +242,9 @@ class RaftNode:
 
             # Deserialize the request
             request: ExecuteReq = self.message_parser.deserialize(json_request)
+            
+            # Execution response
+            self.app.executing_log(request)
             
             # Add to stable storage
             with self.stable_storage as stable_vars:
@@ -257,8 +259,9 @@ class RaftNode:
 
             # Execution response
             response = ExecuteResponse({
-                "status": ResponseStatus.ONPROCESS.value,
+                "status": ResponseStatus.SUCCESS.value,
                 "address": self.address,
+                "data": request["value"]
             })
             
             # Send the serialized response
