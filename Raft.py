@@ -105,6 +105,7 @@ class RaftNode:
                 self.current_time = time.time()
             if(self.election_term == 0xDEAD): 
                 self.__print_log("Stopping Leader Server...")
+                break
 
             
 
@@ -126,7 +127,7 @@ class RaftNode:
                     "reason" : "",
                     "log" : self.log
                 }
-                self.__print_log("Accepted a new follower :", req["address"])
+                self.__print_log(f"Accepted a new follower : {req['address']['ip']}:{req['address']['port']}")
                 return self.message_parser.serialize(response)
             else :
                 response = {
