@@ -7,6 +7,7 @@ from Address       import Address
 import time
 import socket
 import json
+from structs import AppendEntry
 from structs.NodeType import NodeType
 from app import KVStore
 from structs.Log import Log
@@ -47,6 +48,7 @@ class RaftNode:
         self.cluster_addr_list:   List[Address]     = []
         self.cluster_leader_addr: Address           = None
         self.current_time:        float             = time.time()
+        self.ack_length :         int               = 0
         
         # Get state from stable storage
         self.__fetch_stable_storage()
@@ -97,29 +99,41 @@ class RaftNode:
         
 
     async def __leader_heartbeat(self):
-        # TODO : Send periodic heartbeat
-    
-        while True:
+        while self.type == NodeType.LEADER:
+            self.ack_length = 0
+            print("mulai dari awal: " + str(self.ack_length))
             if(time.time() - self.current_time > RaftNode.HEARTBEAT_INTERVAL):
                 self.__print_log("[Leader] Sending heartbeat...")
+                for addr in self.cluster_addr_list:
+                    if(self.address != addr):
+                        print(addr)
+                        self.send_heartbeat_msg(addr)
+                        print("ini sekarang " + str(self.ack_length))
+                print("ini total " + str(self.ack_length))
+                # cek di sini nanti masalah ack length uda berapa
                 self.current_time = time.time()
             if(self.election_term == 0xDEAD): 
                 self.__print_log("Stopping Leader Server...")
                 break
 
-            
 
-        # while True:
-        #     #listen to keyboard interrupt
-        #     self.__print_log("[Leader] Sending heartbeat...")
-        #     pass
-        #     await asyncio.sleep(RaftNode.HEARTBEAT_INTERVAL)
+    def send_heartbeat_msg(self, addr):
+        request = {
+            "leader_addr" : self.address,
+        }
+        response = self.__send_request(request, "heartbeat", addr)
+        if response["status"] != ResponseStatus.SUCCESS.value:
+            return
+        else:
+            self.ack_length += 1
+
 
     def apply_membership(self, req) :
         try :
             if (self.type == NodeType.LEADER) :
                 req = self.message_parser.deserialize(req)
-                self.cluster_addr_list.append(req["address"])
+
+                self.cluster_addr_list.append(Address(**req["address"]))
                 response = {
                     "status": ResponseStatus.SUCCESS.value,
                     "address": self.address,
@@ -185,6 +199,8 @@ class RaftNode:
         response = {
             "heartbeat_response": "ack",
             "address":            self.address,
+            "status": ResponseStatus.SUCCESS.value,
+            "reason": ""
         }
         return json.dumps(response)
     
