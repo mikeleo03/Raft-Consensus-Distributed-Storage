@@ -1,7 +1,7 @@
 import asyncio
 from threading     import Thread
 from xmlrpc.client import ServerProxy
-from typing        import Any, List, TypedDict
+from typing        import Any, List, Set, TypedDict
 from enum          import Enum
 from Address       import Address
 import time
@@ -56,6 +56,8 @@ class RaftNode:
         self.heartbeat_time:      float             = time.time()
         self.timeout_time:        float             = time.time() + RaftNode.ELECTION_TIMEOUT_MIN + (RaftNode.ELECTION_TIMEOUT_MAX - RaftNode.ELECTION_TIMEOUT_MIN) * random.random()
         self.is_timeout:          bool              = False
+        self.current_time:        float             = time.time()
+        self.votes_received:    Set[Address] 
         self.ack_length :         int               = 0
         
         # Get state from stable storage
@@ -148,14 +150,31 @@ class RaftNode:
 
 
     def send_heartbeat_msg(self, addr):
-        request = {
-            "leader_addr" : self.address,
-        }
-        response = self.__send_request(request, "heartbeat", addr)
-        if response["status"] != ResponseStatus.SUCCESS.value:
-            return
-        else:
-            self.ack_length += 1
+        with self.stable_storage as stable_vars:
+            request = {
+                "leader_addr" : self.address,
+                "election_term": stable_vars["election_term"],
+                "prev_last_term": 0,
+                "prev_last_index": len(stable_vars["log"])  #length log terakhir
+            }
+            if(len(stable_vars["log"]) > 0):
+                request["prev_last_term"] = stable_vars["log"][-1]["term"],
+            response = self.__send_request(request, "heartbeat", addr)
+            if response["status"] != ResponseStatus.SUCCESS.value:
+                return
+            else:
+                self.ack_length += 1
+            if(response["election_term"] == stable_vars["election_term"] and self.type == RaftNode.NodeType.LEADER) and response["sync"]:
+                self.__commit_log(stable_vars["log"])
+            elif(response["election_term"] > stable_vars["election_term"]):
+                stable_vars.update({
+                        "election_term": response["election_term"],
+                        "voted_for": None,
+                })
+                self.stable_storage.storeAll(stable_vars)
+                self.type = RaftNode.NodeType.FOLLOWER
+                self.votes_received = set[Address]()
+
 
 
     def apply_membership(self, req) :
@@ -227,13 +246,32 @@ class RaftNode:
     # Inter-node RPCs
     def heartbeat(self, json_request: str) -> "json":
         # TODO : Implement heartbeat for follower
-        response = {
-            "heartbeat_response": "ack",
-            "address":            self.address,
-            "status": ResponseStatus.SUCCESS.value,
-            "reason": ""
-        }
         self.randomize_timeout()
+        request = self.message_parser.deserialize(json_request)
+        with self.stable_storage as stable_vars:
+            if request["election_term"] == stable_vars["election_term"]:    #masih di election term yang sama, klo candidate di restart jd follower
+                self.type = RaftNode.NodeType.FOLLOWER
+                self.cluster_leader_addr = request["leader_addr"]
+                self.votes_received = set[Address]()
+            elif request["election_term"] > stable_vars["election_term"]:
+                stable_vars.update({
+                    "election_term": stable_vars["election_term"],
+                    "voted_for" : None,
+                })
+                self.stable_storage.storeAll(stable_vars)
+            all_sync = (request["election_term"]== stable_vars["election_term"] and len(stable_vars["log"]) >= request["prev_last_index"]) and (request["prev_last_index"] == 0 or stable_vars["log"][-1]["term"] == request["prev_last_term"])
+            response = {
+                "heartbeat_response": "ack",
+                "address":            self.address,
+                "status": ResponseStatus.SUCCESS.value,
+                "election_term": stable_vars["election_term"],
+                "reason": ""
+            }
+            if(all_sync):
+                response["sync"] = True
+                # append entries
+            else:
+                response["sync"] = False
         return json.dumps(response)
     
     #Append log to the log list
