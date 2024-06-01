@@ -27,7 +27,7 @@ class KVStore:
         self.store[key] = self.store.get(key, "") + value
         return "OK"
 
-    def _execute_single_command(self, command):
+    def _execute_single_command(self, command : str | None):
         command_parts = command.split()
         if len(command_parts) < 1:
             return "Invalid command"

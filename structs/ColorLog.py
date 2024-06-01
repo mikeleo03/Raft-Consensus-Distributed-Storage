@@ -1,12 +1,12 @@
 from enum import Enum
 
 class ColorLog(Enum):
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+    _HEADER = '\033[95m'
+    _BLUE = '\033[94m'
+    _CYAN = '\033[96m'
+    _MAGENTA = '\033[95m'
+    _WARNING = '\033[93m'
+    _FAIL = '\033[91m'
+    _ENDC = '\033[0m'
+    _BOLD = '\033[1m'
+    _UNDERLINE = '\033[4m'

@@ -1,12 +1,14 @@
 import sys
 from Address import Address
 from xmlrpc.client import ServerProxy
+from app import KVStore
 from typing import List
 from utils.RPCHandler import RPCHandler
 from messages.Execute import ExecuteRequest, ExecuteResponse
 from flask import Flask, request
 
 
+global _kvStore
 class Client:
     rpc_handler: RPCHandler
     client_addr: Address
@@ -16,7 +18,7 @@ class Client:
         Client.client_addr = Address(client_ip, client_port)
         print(f"Client started at {client_ip}:{client_port}\n")
 
-    def _test_execute(server_address: Address, command: str) -> str:
+    def _execute(server_address: Address, command: str) -> str:
         # Executing the request
         req = ExecuteRequest({
             "command": " " + (command),
@@ -34,15 +36,23 @@ app = Flask(__name__)
 def hello_world():
     return 'Hello, World!'
 
-# get json data from request
-@app.route('/test_execute', methods=['POST'])
-def test_execute():
-    data = request.get_json()
-    command = data['command']
-    _address = Address(data['address']['ip'], int(data['address']['port']))
-    response = Client._test_execute(_address, command)
-    return response
+@app.route('/execute_command', methods=['POST'])
+def execute_command():
+    try:
+        data = request.get_json()
+        command : str = data['command']
 
+        # Is INVALID COMMAND??
+        if(_kvStore._execute_single_command(command) == "Invalid command"):
+            # throw an exception
+            raise Exception("Invalid command")
+        
+        _address = Address(data['address']['ip'], int(data['address']['port']))
+        response = Client._execute(_address, command)
+        return response
+    except Exception as e:
+        # make response 400
+        return {"error": str(e)}, 400
 
 
 if __name__ == "__main__":
@@ -50,5 +60,5 @@ if __name__ == "__main__":
         print("Client.py [client_ip] [client_port]")
 
     Client(sys.argv[1], int(sys.argv[2]))
-
+    _kvStore = KVStore()
     app.run(host=sys.argv[1], port=int(sys.argv[2]))

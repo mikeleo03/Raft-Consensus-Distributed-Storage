@@ -7,6 +7,7 @@ from Address       import Address
 import time
 import socket
 import json
+import random
 from structs import AppendEntry
 from structs.NodeType import NodeType
 from app import KVStore
@@ -26,6 +27,11 @@ class RaftNode:
     ELECTION_TIMEOUT_MIN = 2
     ELECTION_TIMEOUT_MAX = 3
     RPC_TIMEOUT          = 0.5
+    _LOG_ROLE        = {
+        NodeType.FOLLOWER: ColorLog._CYAN.value + "[Follower]" + ColorLog._ENDC.value,
+        NodeType.CANDIDATE: ColorLog._MAGENTA.value + "[Candidate]" + ColorLog._ENDC.value,
+        NodeType.LEADER: ColorLog._BLUE.value + "[Leader]" + ColorLog._ENDC.value,
+    }
     
     class NodeType(Enum):
         FOLLOWER = 1
@@ -47,7 +53,9 @@ class RaftNode:
         self.election_term:       int               = 0
         self.cluster_addr_list:   List[Address]     = []
         self.cluster_leader_addr: Address           = None
-        self.current_time:        float             = time.time()
+        self.heartbeat_time:      float             = time.time()
+        self.timeout_time:        float             = time.time() + RaftNode.ELECTION_TIMEOUT_MIN + (RaftNode.ELECTION_TIMEOUT_MAX - RaftNode.ELECTION_TIMEOUT_MIN) * random.random()
+        self.is_timeout:          bool              = False
         self.ack_length :         int               = 0
         
         # Get state from stable storage
@@ -63,6 +71,7 @@ class RaftNode:
             self.__initialize_as_leader()
         else:
             self.__try_to_apply_membership(contact_addr)
+            self.__initialize_as_follower()
 
     def __fetch_stable_storage(self):
         self.stable_storage = StableStorage[RaftNode.StableVars](self.address)
@@ -84,7 +93,7 @@ class RaftNode:
 
     # Internal Raft Node methods
     def __print_log(self, text: str):
-        print(ColorLog.OKBLUE.value + f"[{self.address}]" + ColorLog.ENDC.value + f"[{time.strftime('%H:%M:%S')}] {text}")
+        print(ColorLog._BLUE.value + f"[{self.address}]" + ColorLog._ENDC.value + f"[{time.strftime('%H:%M:%S')}]" + RaftNode._LOG_ROLE[self.type] + f" {text}")
 
     def __initialize_as_leader(self):
         self.__print_log("Initialize as leader node...")
@@ -96,14 +105,25 @@ class RaftNode:
         # TODO : Inform to all node this is new leader
         self.heartbeat_thread = Thread(target=asyncio.run,args=[self.__leader_heartbeat()])
         self.heartbeat_thread.start()
+
+    def __initialize_as_follower(self):
+        self.__print_log("Initialize as follower node...")
+        self.type = NodeType.FOLLOWER
+        self.election_term = 0
+        self.voted_for = None
+        self.follower_timeout_thread = Thread(target=asyncio.run,args=[self.__follower_timeout()])
+        self.randomize_timeout()
+        self.follower_timeout_thread.start()
+
+
         
 
     async def __leader_heartbeat(self):
         while self.type == NodeType.LEADER:
             self.ack_length = 0
-            print("mulai dari awal: " + str(self.ack_length))
-            if(time.time() - self.current_time > RaftNode.HEARTBEAT_INTERVAL):
-                self.__print_log("[Leader] Sending heartbeat...")
+            # print("mulai dari awal: " + str(self.ack_length))
+            if(time.time() - self.heartbeat_time > RaftNode.HEARTBEAT_INTERVAL):
+                self.__print_log(" Sending heartbeat...")
                 for addr in self.cluster_addr_list:
                     if(self.address != addr):
                         print(addr)
@@ -111,10 +131,20 @@ class RaftNode:
                         print("ini sekarang " + str(self.ack_length))
                 print("ini total " + str(self.ack_length))
                 # cek di sini nanti masalah ack length uda berapa
-                self.current_time = time.time()
+                self.heartbeat_time = time.time()
+
             if(self.election_term == 0xDEAD): 
                 self.__print_log("Stopping Leader Server...")
                 break
+
+    async def __follower_timeout(self):
+        while self.type == NodeType.FOLLOWER:
+            if time.time() > self.timeout_time:
+                self.__print_log("Timeout has occured, changing to candidate...")
+                self.type = NodeType.CANDIDATE
+                break
+        self.__print_log("Starting election...")
+
 
 
     def send_heartbeat_msg(self, addr):
@@ -163,7 +193,7 @@ class RaftNode:
         redirected_addr = contact_addr
         retry_count = 0
         response = {
-            "status": "redirected",
+            "status": ResponseStatus.REDIRECTED.value,
             "address": {
                 "ip":   contact_addr.ip,
                 "port": contact_addr.port,
@@ -175,33 +205,35 @@ class RaftNode:
                 response        = self.__send_request({"address" : self.address},"apply_membership", redirected_addr)
             except :
                 if (retry_count < 5) :
-                    print("Didn't get response from leader, retrying...")
+                    self.__print_log(" Didn't get response from leader, retrying...")
                     time.sleep(RaftNode.HEARTBEAT_INTERVAL)
                     retry_count += 1
                 else :
-                    print("Leader failed to response 5 times, aborting membership application")
+                    self.__print_log("Leader failed to response 5 times, aborting membership application")
                     break
         if (response["status"] == "success") :
             self.log                 = response["log"]
             self.cluster_addr_list   = response["cluster_addr_list"]
             self.cluster_leader_addr = redirected_addr
-            print(self.cluster_addr_list, self.cluster_leader_addr)
+            self.__print_log(f"Membership applied, current cluster: {self.cluster_addr_list}")
+            self.__print_log(f"Current leader: {self.cluster_leader_addr}")
 
     def __send_request(self, request: BaseMessage, rpc_name: str, addr: Address) -> "json":
         # Warning : This method is blocking
         response     = self.rpc_handler.request(addr, rpc_name, request)
-        self.__print_log(response)
+        # self.__print_log(response)
         return response
 
     # Inter-node RPCs
     def heartbeat(self, json_request: str) -> "json":
-        # TODO : Implement heartbeat
+        # TODO : Implement heartbeat for follower
         response = {
             "heartbeat_response": "ack",
             "address":            self.address,
             "status": ResponseStatus.SUCCESS.value,
             "reason": ""
         }
+        self.randomize_timeout()
         return json.dumps(response)
     
     #Append log to the log list
@@ -338,5 +370,9 @@ class RaftNode:
                 "address": self.address,
                 "reason": str(e), 
             }))
+        
+
+    def randomize_timeout(self):
+        self.timeout_time = time.time() + RaftNode.ELECTION_TIMEOUT_MIN + (RaftNode.ELECTION_TIMEOUT_MAX - RaftNode.ELECTION_TIMEOUT_MIN) * random.random()
         
 
