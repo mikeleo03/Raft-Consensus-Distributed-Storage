@@ -7,8 +7,7 @@ from utils.RPCHandler import RPCHandler
 from messages.Execute import ExecuteRequest, ExecuteResponse
 from flask import Flask, request
 
-
-global _kvStore
+_kvStore : KVStore
 class Client:
     rpc_handler: RPCHandler
     client_addr: Address
