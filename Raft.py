@@ -96,7 +96,7 @@ class RaftNode:
         self.stable_storage.storeAll(data)
 
     def __print_log(self, text: str):
-        print(ColorLog._BLUE.value + f"[{self.address}]" + ColorLog._ENDC.value + f"[{time.strftime('%H:%M:%S')}]" + RaftNode._LOG_ROLE[self.type] + f" {text}")
+        print(ColorLog._BLUE.value + f"[{self.address}]" + ColorLog._ENDC.value + f"[{time.strftime('%H:%M:%S')}]" + RaftNode._LOG_ROLE[self.type] + " " + text)
 
     def __initialize_as_leader(self):
         self.__print_log("Initialize as leader node...")
@@ -141,10 +141,10 @@ class RaftNode:
 
             if self.election_term == 0xDEAD: 
                 self.__print_log("Stopping Follower Server...")
-                break
+                return
             self.debug()
         self.__print_log("Starting election...")
-        # self.__start_election()
+        self.__start_election()
 
     def __start_election(self):
         self.election_term += 1
@@ -153,10 +153,25 @@ class RaftNode:
         self.__print_log(f"Starting election for term {self.election_term}")
         self.__print_log(f"Voted for {self.address}")
         self.__print_log(f"Sending vote requests to other nodes...")
-        print(self.cluster_addr_list)
         for addr in self.cluster_addr_list:
+
             if self.address != addr:
                 self.send_vote_request(addr)
+        self.__print_log("Vote requests sent")
+        # delay for a while to wait for votes
+        time.sleep(2)
+
+        if self.election_term == 0xDEAD: 
+            self.__print_log("Stopping Follower Server...")
+            return
+        
+        if(self.type == NodeType.CANDIDATE):
+            self.__print_log("Election failed, retrying...")
+            return self.__start_election()
+        elif(self.type == NodeType.LEADER):
+            return
+        elif(self.type == NodeType.FOLLOWER):
+            return self.__initialize_as_follower()
 
     def send_vote_request(self, addr: Address):
         with self.stable_storage as stable_vars:
@@ -166,12 +181,21 @@ class RaftNode:
                 "last_log_term": stable_vars["log"][-1]["term"] if len(stable_vars["log"]) > 0 else 0,
                 "last_log_index": len(stable_vars["log"]) - 1,
             }
-            response = self.__send_request(request, "vote", addr)
+            try:
+                if(self.type == NodeType.FOLLOWER):
+                    return
+                response = self.__send_request(request, "vote", addr)
+            except Exception as e:
+                self.__print_log(f"Failed to get response from {addr} for vote request. Exception: {e}")
+                return
+            
+            # unsuccessful vote request
             if response["status"] != ResponseStatus.SUCCESS.value:
-                self.__print_log(f"Failed to get response from {addr} for vote request")
+                self.__print_log(f"Failed to get voting from {addr} for vote request")
+                self.__print_log(f"Reason: {response['reason']}")
                 return
 
-            if response["election_term"] > stable_vars["election_term"]:
+            if response["election_term"] > stable_vars["election_term"]: # get heartbeats from other node leader
                 stable_vars.update({
                     "election_term": response["election_term"],
                     "voted_for": None,
@@ -189,36 +213,55 @@ class RaftNode:
                     self.__initialize_as_leader()
 
 
+    """
+    RPC Method to vote for a candidate
+    """
     def vote(self, json_request: str) -> str:
-        self.randomize_timeout()
         request = self.message_parser.deserialize(json_request)
-        with self.stable_storage as stable_vars:
-            if request["election_term"] < stable_vars["election_term"]:
-                response = {
-                    "status": ResponseStatus.SUCCESS.value,
-                    "election_term": stable_vars["election_term"],
-                    "address": self.address,
-                    "reason": "Already voted for a candidate with higher term",
-                }
-            elif request["last_log_term"] < stable_vars["log"][-1]["term"]:
-                response = {
-                    "status": ResponseStatus.SUCCESS.value,
-                    "election_term": stable_vars["election_term"],
-                    "address": self.address,
-                    "reason": "Candidate's log is not up-to-date",
-                }
-            else:
-                stable_vars.update({
-                    "election_term": request["election_term"],
-                    "voted_for": request["candidate_addr"],
-                })
-                self.stable_storage.storeAll(stable_vars)
-                response = {
-                    "status": ResponseStatus.SUCCESS.value,
-                    "election_term": request["election_term"],
-                    "address": self.address,
-                    "reason": "",
-                }
+        self.__print_log(f"Received vote request from {request['candidate_addr']}")
+        
+        ## TO DO: FIXXXX THE RESPONSE! TEMPOARY RESPONSE to allow the voting
+        response = {
+            "status": ResponseStatus.SUCCESS.value,
+            "election_term": request["election_term"],
+            "address": self.address,
+            "reason": "",
+        }
+
+        # with self.stable_storage as stable_vars:
+        #     self.__print_log(ColorLog._MAGENTA.value + f"CP PPPPPP" + ColorLog._ENDC.value)
+        #     if request["election_term"] < stable_vars["election_term"]:
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP 1" + ColorLog._ENDC.value)
+        #         response = {
+        #             "status": ResponseStatus.SUCCESS.value,
+        #             "election_term": stable_vars["election_term"],
+        #             "address": self.address,
+        #             "reason": "Already voted for a candidate with higher term",
+        #         }
+        #     elif request["last_log_term"] < stable_vars["log"][-1]["term"]:
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP 2" + ColorLog._ENDC.value)
+        #         response = {
+        #             "status": ResponseStatus.SUCCESS.value,
+        #             "election_term": stable_vars["election_term"],
+        #             "address": self.address,
+        #             "reason": "Candidate's log is not up-to-date",
+        #         }
+        #     else:
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP else" + ColorLog._ENDC.value)
+        #         stable_vars.update({
+        #             "election_term": request["election_term"],
+        #             "voted_for": request["candidate_addr"],
+        #         })
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP" + ColorLog._ENDC.value)
+        #         self.stable_storage.storeAll(stable_vars)
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP" + ColorLog._ENDC.value)
+        #         response = {
+        #             "status": ResponseStatus.SUCCESS.value,
+        #             "election_term": request["election_term"],
+        #             "address": self.address,
+        #             "reason": "",
+        #         }
+        # self.__print_log(f"Sending vote response to {request['candidate_addr']} : {response}")
         return self.message_parser.serialize(response)
     
 
@@ -261,6 +304,10 @@ class RaftNode:
                 self.type = NodeType.FOLLOWER
                 self.votes_received = set()
 
+    """
+    RPC Method to apply new membership to the cluster
+
+    """
     def apply_membership(self, req) :
         try:
             if self.type == NodeType.LEADER:
@@ -287,6 +334,17 @@ class RaftNode:
                     "log": self.log
                 }
                 self.__print_log(f"Accepted a new follower : {req['address']['ip']}:{req['address']['port']}")
+
+                # iterate for every node in the cluster to update the membership of the cluster
+                for addr in self.cluster_addr_list:
+                    if addr != self.address and addr != Address(**req["address"]):
+                        self.__print_log(ColorLog._MAGENTA.value + f" Updating membership for {addr} " + ColorLog._ENDC.value)
+                        try:
+                            res = self.__send_request({"address": Address(**req["address"])}, "update_membership", addr)
+                        except:
+                           ...
+       
+                        
                 return self.message_parser.serialize(response)
             else:
                 response = {
@@ -302,6 +360,20 @@ class RaftNode:
                 "address": self.address,
                 "reason": str(e), 
             }))
+        
+
+    """
+    RPC Method to update new membership in the cluster (for Follower/Candidate)
+    """
+    def update_membership(self, req) :
+        # self.__print_log("Updating membership")
+        # self.__print_log(ColorLog._MAGENTA.value + req + ColorLog._ENDC.value)
+        if self.type == NodeType.FOLLOWER:
+            req = self.message_parser.deserialize(req)
+            # self.__print_log(ColorLog._MAGENTA.value + f" Received new membership: {req['address']['ip']}:{req['address']['port']} " + ColorLog._ENDC.value)
+            _new_addr = Address(**req["address"])
+            self.cluster_addr_list.append(_new_addr)
+
     
     """
     Method to try to apply membership to the cluster when initializing a new node, 
@@ -345,7 +417,7 @@ class RaftNode:
         self.__print_log(f"RPC Name: {rpc_name}")
         response = self.rpc_handler.request(addr, rpc_name, request)
         if response is None:
-            raise Exception(f"Failed to get a response from {addr} for {rpc_name} request")
+            raise Exception(" " + ColorLog._WARNING.value + f"Failed to get a response from {addr} for {rpc_name} request" + ColorLog._ENDC.value + " ")
         self.__print_log(f"Received response from {addr} : {response}")
         return response
 
@@ -470,14 +542,14 @@ class RaftNode:
     def randomize_timeout(self):
         self.timeout_time = time.time() + RaftNode.ELECTION_TIMEOUT_MIN + (RaftNode.ELECTION_TIMEOUT_MAX - RaftNode.ELECTION_TIMEOUT_MIN) * random.random()
 
-    # delete for later
+    # delete for later, USING FOR DEBUGGING IN 1hz PERIOD
     def debug(self):
         if(time.time() - self.debug_time > 1):
-            self.__print_log("Debugging")
-            self.__print_log(f"Current Cluster: {self.cluster_addr_list}")
-            self.__print_log(f"Current Log: {self.log}")
-            # iterarte to print thype of slef.cluster_addr_list
-            for addr in self.cluster_addr_list:
-                self.__print_log(f"Address: {addr}")
+            # self.__print_log("Debugging")
+            # self.__print_log(f"Current Cluster: {self.cluster_addr_list}")
+            # self.__print_log(f"Current Log: {self.log}")
+            # # iterarte to print thype of slef.cluster_addr_list
+            # for addr in self.cluster_addr_list:
+            #     self.__print_log(f"Address: {addr}")
             self.debug_time = time.time()
             
