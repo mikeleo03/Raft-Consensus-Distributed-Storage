@@ -36,7 +36,7 @@ class RaftNode:
         FOLLOWER = 1
         CANDIDATE = 2
         LEADER = 3
-    
+
     class StableVars(TypedDict):
         election_term: int
         voted_for: Address     
@@ -61,8 +61,6 @@ class RaftNode:
         self.ack_length:        Dict[Address, int]  = {}
         self.sent_length:       Dict[Address, int]  = {}
 
-       
-        
         # Get state from stable storage
         self.__fetch_stable_storage()
         
@@ -236,41 +234,39 @@ class RaftNode:
             prev_last_index = self.sent_length.get(addr, 0)
             next_index = stable_vars["log"][prev_last_index:]
             prev_last_term = stable_vars["log"][prev_last_index - 1]["term"] if prev_last_index > 0 else 0
-            request = {
-                "leader_addr": self.address,
-                "election_term": stable_vars["election_term"],
-                "prev_last_term": prev_last_term,
-                "prev_last_index": prev_last_index,
-                "entries": next_index,
-                "leader_commit": stable_vars["commit_length"],
-            }
+
             try:
-                response = self.__send_request(request, "heartbeat", addr)
+                response = self.__send_request({
+                    "leader_addr": self.address,
+                    "election_term": stable_vars["election_term"],
+                    "prev_last_term": prev_last_term,
+                    "prev_last_index": prev_last_index,
+                    "entries": next_index,
+                    "leader_commit": stable_vars["commit_length"],
+                }, "heartbeat", addr)
                 if response["status"] != ResponseStatus.SUCCESS.value:
                     return
             except Exception as e:
                 self.__print_log(f"Got an exception when sending heartbeat to {addr}. Something went wrong")
                 self.__print_log(f"Exception: {e}")
                 return
-                # pass
             
             ack = response["ack"]
-            if (response["election_term"] == stable_vars["election_term"] and self.type == NodeType.LEADER) and response["sync"]:
-                print("ack", ack)
+            if response["election_term"] == stable_vars["election_term"] and self.type == NodeType.LEADER and response.get("sync"):
                 if ack >= self.ack_length.get(addr, 0):
                     self.ack_length[addr] = ack
                     self.sent_length[addr] = ack
-                    print("Commit")
                     self.__commit_log(stable_vars)
-                    
+                
             elif response["election_term"] > stable_vars["election_term"]:
                 stable_vars.update({
-                        "election_term": response["election_term"] + 1,
-                        "voted_for": None,
+                    "election_term": response["election_term"] + 1,
+                    "voted_for": None,
                 })
                 self.stable_storage.storeAll(stable_vars)
                 self.type = NodeType.FOLLOWER
                 self.votes_received = set()
+
 
     """
     RPC Method to apply new membership to the cluster
@@ -396,10 +392,8 @@ class RaftNode:
         self.type = NodeType.FOLLOWER # make sure when receiving heartbeat, the node is a follower
         self.randomize_timeout()
         request = self.message_parser.deserialize(json_request)
-        print("Sebelum stabel var")
         with self.stable_storage as stable_vars:
             if request["election_term"] == stable_vars["election_term"]:
-                print("Sama termnya")
                 self.type = NodeType.FOLLOWER
                 self.cluster_leader_addr = Address(**request["leader_addr"])
                 self.votes_received = set()
@@ -422,12 +416,10 @@ class RaftNode:
                 "election_term": stable_vars["election_term"],
                 "reason": ""
             }
-            print("ack_length", self.ack_length)
             if all_sync:
-                print("Masuk all sync")
                 self.__append_entries(request["entries"], request["prev_last_index"], request["leader_commit"], stable_vars)
-                print("Kesini")
                 ack = request["prev_last_index"] + len(request["entries"])
+                print()
                 response["ack"] = ack
                 response["sync"] = True
             else:
@@ -506,7 +498,10 @@ class RaftNode:
             
         if latest_ack > stable_var["commit_length"] and log[latest_ack].term == stable_var["election_term"]:
             for i in range(stable_var["commit_length"], latest_ack + 1):
-                self.app.executing_log(log[i])
+                value = self.app.executing_log(log[i])
+                print("Dari commit", value)
+                stable_var["log"][i]["value"] = value
+                                              
             stable_var["commit_length"] = latest_ack
             self.stable_storage.storeAll(stable_var)
             self.__print_log(f"Committed up to index {latest_ack}")
@@ -528,8 +523,9 @@ class RaftNode:
         commit_length = stable_var["commit_length"]
         if leader_commit > commit_length:
             for i in range(commit_length, leader_commit):
-                # TODO: deliver log to application
-                self.app.executing_log(log[i])
+                value = self.app.executing_log(log[i])
+                print("Dari append entries", value)
+                stable_var["log"][i]["value"] = value
             stable_var["commit_length"] = leader_commit
 
         self.stable_storage.storeAll(stable_var)

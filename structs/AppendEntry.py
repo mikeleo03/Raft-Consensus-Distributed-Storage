@@ -7,10 +7,10 @@ class AppendEntry:
     pass
 
 class Request:
-    def __init__(self, leader_addr, prev_last_index, prev_last_term, election_term, prev_log_index, entries, leader_commit):
+    def __init__(self, leader_addr, prev_last_index, prev_last_term, election_term, entries, leader_commit):
         self.leader_addr: Address = leader_addr
         self.prev_last_index: int = prev_last_index
-        self.prev_last_term: int = prev_log_index
+        self.prev_last_term: int = prev_last_term
         self.election_term: int = election_term,
         self.entries: List[Log] = entries
         self.leader_commit: int = leader_commit
