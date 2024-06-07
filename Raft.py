@@ -244,6 +244,9 @@ class RaftNode:
                     "entries": next_index,
                     "leader_commit": stable_vars["commit_length"],
                 }, "heartbeat", addr)
+                if response is None:
+                    self.__print_log(f"No response from {addr} for heartbeat.")
+                    return
                 if response["status"] != ResponseStatus.SUCCESS.value:
                     return
             except Exception as e:
@@ -414,18 +417,17 @@ class RaftNode:
                 "address": self.address,
                 "status": ResponseStatus.SUCCESS.value,
                 "election_term": stable_vars["election_term"],
-                "reason": ""
+                "reason": "",
+                "ack": 5,
             }
             if all_sync:
                 self.__append_entries(request["entries"], request["prev_last_index"], request["leader_commit"], stable_vars)
-                ack = request["prev_last_index"] + len(request["entries"])
-                print()
+                ack = int(request["prev_last_index"]) + len(request["entries"])
                 response["ack"] = ack
                 response["sync"] = True
             else:
                 response["ack"] = 0
                 response["sync"] = False
-            self.__print_log(response)
         return self.message_parser.serialize(response)
     
     """
