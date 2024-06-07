@@ -23,8 +23,8 @@ import math
 
 class RaftNode:
     HEARTBEAT_INTERVAL = 1
-    ELECTION_TIMEOUT_MIN = 6
-    ELECTION_TIMEOUT_MAX = 15
+    ELECTION_TIMEOUT_MIN = 8
+    ELECTION_TIMEOUT_MAX = 18
     RPC_TIMEOUT = 0.5
     _LOG_ROLE = {
         NodeType.FOLLOWER: ColorLog._CYAN.value + "[Follower]" + ColorLog._ENDC.value,
@@ -144,29 +144,39 @@ class RaftNode:
                 return
             self.debug()
         self.__print_log("Starting election...")
+        self.election_term += 1
         self.__start_election()
 
     def __start_election(self):
-        self.election_term += 1
+        #randomize timeout
+        self.randomize_timeout()
+
+        # initialize voting
         self.voted_for = self.address
-        self.votes_received = set()
-        self.__print_log(f"Starting election for term {self.election_term}")
-        self.__print_log(f"Voted for {self.address}")
-        self.__print_log(f"Sending vote requests to other nodes...")
-        for addr in self.cluster_addr_list:
+        while(time.time() < self.timeout_time):
+            self.votes_received = set()
+            self.__print_log(f"Starting election for term {self.election_term}")
+            self.__print_log(f"Voted for {self.address}")
+            self.votes_received.add(self.address)
+            self.__print_log(f"Sending vote requests to other nodes...")
+            for addr in self.cluster_addr_list:
+                if(self.type == NodeType.FOLLOWER):
+                    return self.__initialize_as_follower()
+                if self.address != addr:
+                    self.send_vote_request(addr)
+            self.__print_log("Vote requests sent...")
+            self.__print_log(f"Vote results: {self.votes_received}")
+            self.__print_log("retrying election...")
 
-            if self.address != addr:
-                self.send_vote_request(addr)
-        self.__print_log("Vote requests sent")
-        # delay for a while to wait for votes
-        time.sleep(2)
-
-        if self.election_term == 0xDEAD: 
-            self.__print_log("Stopping Follower Server...")
-            return
+            if self.election_term == 0xDEAD: 
+                self.__print_log("Stopping Follower Server...")
+                return
         
+
+
         if(self.type == NodeType.CANDIDATE):
-            self.__print_log("Election failed, retrying...")
+            self.__print_log("Timeout Occured, retrying election for next term...")
+            self.election_term += 1
             return self.__start_election()
         elif(self.type == NodeType.LEADER):
             return
@@ -175,11 +185,17 @@ class RaftNode:
 
     def send_vote_request(self, addr: Address):
         with self.stable_storage as stable_vars:
-            request = {
+            # request = {
+            #     "candidate_addr": self.address,
+            #     "election_term": stable_vars["election_term"],
+            #     "last_log_term": stable_vars["log"][-1]["term"] if len(stable_vars["log"]) > 0 else 0,
+            #     "last_log_index": len(stable_vars["log"]) - 1,
+            # }
+            request : BaseMessage = {
                 "candidate_addr": self.address,
-                "election_term": stable_vars["election_term"],
-                "last_log_term": stable_vars["log"][-1]["term"] if len(stable_vars["log"]) > 0 else 0,
-                "last_log_index": len(stable_vars["log"]) - 1,
+                "election_term": self.election_term,
+                # "last_log_term": stable_vars["log"][-1]["term"] if len(stable_vars["log"]) > 0 else 0,
+                # "last_log_index": len(stable_vars["log"]) - 1,
             }
             try:
                 if(self.type == NodeType.FOLLOWER):
@@ -195,11 +211,13 @@ class RaftNode:
                 self.__print_log(f"Reason: {response['reason']}")
                 return
 
-            if response["election_term"] > stable_vars["election_term"]: # get heartbeats from other node leader
+            # if response["election_term"] > stable_vars["election_term"]: # get heartbeats from other node leader
+            if response["election_term"] > self.election_term:
                 stable_vars.update({
                     "election_term": response["election_term"],
                     "voted_for": None,
                 })
+                self.election_term = response["election_term"]
                 self.stable_storage.storeAll(stable_vars)
                 self.type = NodeType.FOLLOWER
                 self.votes_received = set()
@@ -211,58 +229,6 @@ class RaftNode:
                     self.type = NodeType.LEADER
                     self.__print_log("Election won, changing to leader...")
                     self.__initialize_as_leader()
-
-
-    """
-    RPC Method to vote for a candidate
-    """
-    def vote(self, json_request: str) -> str:
-        request = self.message_parser.deserialize(json_request)
-        self.__print_log(f"Received vote request from {request['candidate_addr']}")
-        
-        ## TO DO: FIXXXX THE RESPONSE! TEMPOARY RESPONSE to allow the voting
-        response = {
-            "status": ResponseStatus.SUCCESS.value,
-            "election_term": request["election_term"],
-            "address": self.address,
-            "reason": "",
-        }
-
-        # with self.stable_storage as stable_vars:
-        #     self.__print_log(ColorLog._MAGENTA.value + f"CP PPPPPP" + ColorLog._ENDC.value)
-        #     if request["election_term"] < stable_vars["election_term"]:
-        #         self.__print_log(ColorLog._MAGENTA.value + f"CP 1" + ColorLog._ENDC.value)
-        #         response = {
-        #             "status": ResponseStatus.SUCCESS.value,
-        #             "election_term": stable_vars["election_term"],
-        #             "address": self.address,
-        #             "reason": "Already voted for a candidate with higher term",
-        #         }
-        #     elif request["last_log_term"] < stable_vars["log"][-1]["term"]:
-        #         self.__print_log(ColorLog._MAGENTA.value + f"CP 2" + ColorLog._ENDC.value)
-        #         response = {
-        #             "status": ResponseStatus.SUCCESS.value,
-        #             "election_term": stable_vars["election_term"],
-        #             "address": self.address,
-        #             "reason": "Candidate's log is not up-to-date",
-        #         }
-        #     else:
-        #         self.__print_log(ColorLog._MAGENTA.value + f"CP else" + ColorLog._ENDC.value)
-        #         stable_vars.update({
-        #             "election_term": request["election_term"],
-        #             "voted_for": request["candidate_addr"],
-        #         })
-        #         self.__print_log(ColorLog._MAGENTA.value + f"CP" + ColorLog._ENDC.value)
-        #         self.stable_storage.storeAll(stable_vars)
-        #         self.__print_log(ColorLog._MAGENTA.value + f"CP" + ColorLog._ENDC.value)
-        #         response = {
-        #             "status": ResponseStatus.SUCCESS.value,
-        #             "election_term": request["election_term"],
-        #             "address": self.address,
-        #             "reason": "",
-        #         }
-        # self.__print_log(f"Sending vote response to {request['candidate_addr']} : {response}")
-        return self.message_parser.serialize(response)
     
 
     def send_heartbeat_msg(self, addr: Address):
@@ -283,8 +249,10 @@ class RaftNode:
                 if response["status"] != ResponseStatus.SUCCESS.value:
                     return
             except Exception as e:
-                self.__print_log(f"Failed to send heartbeat to {addr}. Something went wrong")
+                self.__print_log(f"Got an exception when sending heartbeat to {addr}. Something went wrong")
+                self.__print_log(f"Exception: {e}")
                 return
+                # pass
             
             ack = response["ack"]
             if (response["election_term"] == stable_vars["election_term"] and self.type == NodeType.LEADER) and response["sync"]:
@@ -342,7 +310,7 @@ class RaftNode:
                         try:
                             res = self.__send_request({"address": Address(**req["address"])}, "update_membership", addr)
                         except:
-                           ...
+                            pass
        
                         
                 return self.message_parser.serialize(response)
@@ -421,8 +389,11 @@ class RaftNode:
         self.__print_log(f"Received response from {addr} : {response}")
         return response
 
-    # Inter-node RPCs
+    """
+    Internode RPC Method to send heartbeat to other nodes
+    """
     def heartbeat(self, json_request: str) -> "json":
+        self.type = NodeType.FOLLOWER # make sure when receiving heartbeat, the node is a follower
         self.randomize_timeout()
         request = self.message_parser.deserialize(json_request)
         print("Sebelum stabel var")
@@ -463,6 +434,61 @@ class RaftNode:
                 response["ack"] = 0
                 response["sync"] = False
             self.__print_log(response)
+        return self.message_parser.serialize(response)
+    
+    """
+    RPC Method to vote for a candidate
+    """
+    def vote(self, json_request: str) -> str:
+        request = self.message_parser.deserialize(json_request)
+        self.__print_log(f"Received vote request from {request['candidate_addr']}")
+        
+        ## TO DO: FIXXXX THE RESPONSE! TEMPOARY RESPONSE to allow the voting
+
+        # randomize response status generator
+        _response_status : ResponseStatus = ResponseStatus.SUCCESS if (random.random() > 0.5 and self.election_term < int(request["election_term"]))\
+                                                                   else ResponseStatus.FAILED
+        response = {
+            "status": _response_status.value,
+            "election_term": request["election_term"],
+            "address": self.address,
+            "reason": "",
+        }
+
+        # with self.stable_storage as stable_vars:
+        #     self.__print_log(ColorLog._MAGENTA.value + f"CP PPPPPP" + ColorLog._ENDC.value)
+        #     if request["election_term"] < stable_vars["election_term"]:
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP 1" + ColorLog._ENDC.value)
+        #         response = {
+        #             "status": ResponseStatus.SUCCESS.value,
+        #             "election_term": stable_vars["election_term"],
+        #             "address": self.address,
+        #             "reason": "Already voted for a candidate with higher term",
+        #         }
+        #     elif request["last_log_term"] < stable_vars["log"][-1]["term"]:
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP 2" + ColorLog._ENDC.value)
+        #         response = {
+        #             "status": ResponseStatus.SUCCESS.value,
+        #             "election_term": stable_vars["election_term"],
+        #             "address": self.address,
+        #             "reason": "Candidate's log is not up-to-date",
+        #         }
+        #     else:
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP else" + ColorLog._ENDC.value)
+        #         stable_vars.update({
+        #             "election_term": request["election_term"],
+        #             "voted_for": request["candidate_addr"],
+        #         })
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP" + ColorLog._ENDC.value)
+        #         self.stable_storage.storeAll(stable_vars)
+        #         self.__print_log(ColorLog._MAGENTA.value + f"CP" + ColorLog._ENDC.value)
+        #         response = {
+        #             "status": ResponseStatus.SUCCESS.value,
+        #             "election_term": request["election_term"],
+        #             "address": self.address,
+        #             "reason": "",
+        #         }
+        # self.__print_log(f"Sending vote response to {request['candidate_addr']} : {response}")
         return self.message_parser.serialize(response)
 
     def __commit_log(self, stable_var: StableVars):
