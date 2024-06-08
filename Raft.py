@@ -502,9 +502,9 @@ class RaftNode:
                 latest_ack = i
             
         if latest_ack > stable_var["commit_length"] and log[latest_ack].get('term') == stable_var["election_term"]:
-            for i in range(stable_var["commit_length"], latest_ack + 1):
-                self.app.executing_log(log[i])
-                print("Dari commit", log[i]["value"])
+            # for i in range(stable_var["commit_length"], latest_ack + 1):
+                # self.app.executing_log(log[i])
+                # print("Dari commit", log[i]["value"])
                                               
             stable_var["commit_length"] = latest_ack
             self.stable_storage.storeAll(stable_var)
@@ -526,10 +526,13 @@ class RaftNode:
 
         commit_length = stable_var["commit_length"]
         if leader_commit > commit_length:
-            for i in range(commit_length, leader_commit):
-                self.app.executing_log(log[i])
-                print("Dari append entries", log[i]["value"])
+            # for i in range(commit_length, leader_commit):
+                # self.app.executing_log(log[i])
+                # print("Dari append entries", log[i]["value"])
             stable_var["commit_length"] = leader_commit
+
+                # Add an indented block here
+                # to fix the "Expected indented block" error
 
         self.stable_storage.storeAll(stable_var)
 
