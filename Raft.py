@@ -23,6 +23,7 @@ import math
 
 class RaftNode:
     HEARTBEAT_INTERVAL = 1
+    RETRY_COUNT = 5
     ELECTION_TIMEOUT_MIN = 8
     ELECTION_TIMEOUT_MAX = 18
     RPC_TIMEOUT = 0.5
@@ -31,6 +32,7 @@ class RaftNode:
         NodeType.CANDIDATE: ColorLog._MAGENTA.value + "[Candidate]" + ColorLog._ENDC.value,
         NodeType.LEADER: ColorLog._BLUE.value + "[Leader]" + ColorLog._ENDC.value,
     }
+    
     
     class NodeType(Enum):
         FOLLOWER = 1
@@ -94,7 +96,7 @@ class RaftNode:
         self.stable_storage.storeAll(data)
 
     def __print_log(self, text: str):
-        print(ColorLog._BLUE.value + f"[{self.address}]" + ColorLog._ENDC.value + f"[{time.strftime('%H:%M:%S')}]" + RaftNode._LOG_ROLE[self.type] + " " + text)
+        print(ColorLog.colorize(f"[{self.address}]", ColorLog._BLUE) + f"[{time.strftime('%H:%M:%S')}]" + RaftNode._LOG_ROLE[self.type] + " " + text)
 
     def __initialize_as_leader(self):
         self.__print_log("Initialize as leader node...")
@@ -133,7 +135,7 @@ class RaftNode:
     async def __follower_timeout(self):
         while self.type == NodeType.FOLLOWER:
             if time.time() > self.timeout_time:
-                self.__print_log("Timeout has occured, changing to candidate...")
+                self.__print_log(ColorLog.colorize("[TIMEOUT] ", ColorLog._RED) + "Timeout has occured, changing to candidate...")
                 self.type = NodeType.CANDIDATE
                 break
 
@@ -158,11 +160,10 @@ class RaftNode:
             self.votes_received.add(self.address)
             self.__print_log(f"Sending vote requests to other nodes...")
             for addr in self.cluster_addr_list:
-                if(self.type == NodeType.FOLLOWER):
-                    return self.__initialize_as_follower()
                 if self.address != addr:
                     self.send_vote_request(addr)
-            self.__print_log("Vote requests sent...")
+                if(self.type != NodeType.CANDIDATE):
+                    return
             self.__print_log(f"Vote results: {self.votes_received}")
             self.__print_log("retrying election...")
 
@@ -173,13 +174,11 @@ class RaftNode:
 
 
         if(self.type == NodeType.CANDIDATE):
-            self.__print_log("Timeout Occured, retrying election for next term...")
+            self.__print_log(ColorLog.colorize("[TIMEOUT]", ColorLog._RED) + " Timeout Occured, retrying election for next term...")
             self.election_term += 1
             return self.__start_election()
-        elif(self.type == NodeType.LEADER):
-            return
-        elif(self.type == NodeType.FOLLOWER):
-            return self.__initialize_as_follower()
+        else:
+            return #finish election
 
     def send_vote_request(self, addr: Address):
         with self.stable_storage as stable_vars:
@@ -197,7 +196,7 @@ class RaftNode:
             }
             try:
                 if(self.type == NodeType.FOLLOWER):
-                    return
+                    return self.__initialize_as_follower()
                 response = self.__send_request(request, "vote", addr)
             except Exception as e:
                 self.__print_log(f"Failed to get response from {addr} for vote request. Exception: {e}")
@@ -219,14 +218,15 @@ class RaftNode:
                 self.stable_storage.storeAll(stable_vars)
                 self.type = NodeType.FOLLOWER
                 self.votes_received = set()
-                return
+                return self.__initialize_as_follower()
 
             if response["status"] == ResponseStatus.SUCCESS.value:
                 self.votes_received.add(addr)
                 if len(self.votes_received) >= math.floor(len(self.cluster_addr_list) / 2) + 1:
                     self.type = NodeType.LEADER
                     self.__print_log("Election won, changing to leader...")
-                    self.__initialize_as_leader()
+                    self.__print_log(f"Voting result: {self.votes_received}")
+                    return self.__initialize_as_leader()
     
 
     def send_heartbeat_msg(self, addr: Address):
@@ -362,13 +362,13 @@ class RaftNode:
                 redirected_addr = Address(response["address"]["ip"], response["address"]["port"])
                 response = self.__send_request({"address": self.address}, "apply_membership", redirected_addr)
             except:
-                if retry_count < 5:
+                if retry_count < RaftNode.RETRY_COUNT:
                     self.__print_log("Didn't get response from leader, retrying...")
                     time.sleep(RaftNode.HEARTBEAT_INTERVAL)
                     retry_count += 1
                 else:
-                    self.__print_log("Leader failed to respond 5 times, aborting membership application")
-                    break
+                    self.__print_log(ColorLog.colorize(f"Leader failed to respond {RaftNode.RETRY_COUNT} times, aborting membership application", ColorLog._RED))
+                    exit()
         if response["status"] == "success":
             self.log = response["log"]
             # self.cluster_addr_list = response["cluster_addr_list"]
@@ -395,6 +395,7 @@ class RaftNode:
         self.type = NodeType.FOLLOWER # make sure when receiving heartbeat, the node is a follower
         self.randomize_timeout()
         request = self.message_parser.deserialize(json_request)
+        self.__print_log(f"Received heartbeat from {request['leader_addr']}")
         with self.stable_storage as stable_vars:
             if request["election_term"] == stable_vars["election_term"]:
                 self.type = NodeType.FOLLOWER
@@ -435,16 +436,16 @@ class RaftNode:
     """
     def vote(self, json_request: str) -> str:
         request = self.message_parser.deserialize(json_request)
-        self.__print_log(f"Received vote request from {request['candidate_addr']}")
+        self.__print_log(f"Received vote request from {request['candidate_addr']} with election term {request['election_term']}")
         
         ## TO DO: FIXXXX THE RESPONSE! TEMPOARY RESPONSE to allow the voting
 
         # randomize response status generator
-        _response_status : ResponseStatus = ResponseStatus.SUCCESS if (random.random() > 0.5 and self.election_term < int(request["election_term"]))\
+        _response_status : ResponseStatus = ResponseStatus.SUCCESS if (self.election_term < int(request["election_term"]))\
                                                                    else ResponseStatus.FAILED
         response = {
             "status": _response_status.value,
-            "election_term": request["election_term"],
+            "election_term": max(int(request["election_term"]),self.election_term),
             "address": self.address,
             "reason": "",
         }
