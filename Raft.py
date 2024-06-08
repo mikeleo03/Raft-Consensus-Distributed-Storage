@@ -501,7 +501,7 @@ class RaftNode:
             if ack_count >= min_ack:
                 latest_ack = i
             
-        if latest_ack > stable_var["commit_length"] and log[latest_ack].term == stable_var["election_term"]:
+        if latest_ack > stable_var["commit_length"] and log[latest_ack].get('term') == stable_var["election_term"]:
             for i in range(stable_var["commit_length"], latest_ack + 1):
                 self.app.executing_log(log[i])
                 print("Dari commit", log[i]["value"])
@@ -535,8 +535,18 @@ class RaftNode:
 
     # Client RPCs
     def execute(self, json_request: str) -> str:
+        request: ExecuteRequest = self.message_parser.deserialize(json_request)
+        if (self.type != NodeType.LEADER) : # Redirect to leader if not leader
+            resp = self.__send_request({"command": request["command"], "value" : ""}, "execute", self.cluster_leader_addr)
+            print("resp:", resp)
+            response = ExecuteResponse({
+                "status": resp["status"],
+                "address": resp["address"],
+                "data": resp["data"]
+            })
+            print("response", response)
+            return self.message_parser.serialize(response)
         try:
-            request: ExecuteRequest = self.message_parser.deserialize(json_request)
             with self.stable_storage as stable_vars:
                 log = Log({
                     "term": stable_vars["election_term"],
