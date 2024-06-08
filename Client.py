@@ -1,13 +1,14 @@
+from flask import Flask, request
+from flask_cors import CORS  # Import CORS
 import sys
 from Address import Address
-from xmlrpc.client import ServerProxy
 from app import KVStore
 from typing import List
 from utils.RPCHandler import RPCHandler
 from messages.Execute import ExecuteRequest, ExecuteResponse
-from flask import Flask, request
 
 _kvStore : KVStore
+
 class Client:
     rpc_handler: RPCHandler
     client_addr: Address
@@ -17,11 +18,12 @@ class Client:
         Client.client_addr = Address(client_ip, client_port)
         print(f"Client started at {client_ip}:{client_port}\n")
 
+    @staticmethod
     def _execute(server_address: Address, command: str) -> str:
         # Executing the request
         req = ExecuteRequest({
-            "command": " " + (command),
-            "value": " "
+            "command": command,  # Remove unnecessary spaces
+            "value": ""
         })
         print(server_address)
         resp = Client.rpc_handler.request(server_address, "execute", req)
@@ -30,6 +32,7 @@ class Client:
 # Flask Server
 
 app = Flask(__name__)
+CORS(app)  # Apply CORS to the Flask app
 
 @app.route('/')
 def hello_world():
@@ -39,7 +42,7 @@ def hello_world():
 def execute_command():
     try:
         data = request.get_json()
-        command : str = data['command']
+        command: str = data['command']
 
         # Is INVALID COMMAND??
         if(_kvStore._execute_single_command(command) == "Invalid command"):
@@ -53,10 +56,10 @@ def execute_command():
         # make response 400
         return {"error": str(e)}, 400
 
-
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Client.py [client_ip] [client_port]")
+        sys.exit(1)
 
     Client(sys.argv[1], int(sys.argv[2]))
     _kvStore = KVStore()
