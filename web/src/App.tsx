@@ -52,8 +52,9 @@ function App() {
   });
 
   useEffect(() => {
+    const { port } = form.getValues();
     form.reset(
-      {},
+      { port },
       {
         keepErrors: true,
         keepDirty: true,
@@ -78,7 +79,7 @@ function App() {
   const handleAddCommand = () => {
     const { key, value, port } = form.getValues();
     setCommands([...commands, { type: commandType as MethodTypeString, key, value, port }]);
-    form.reset({ key: "", value: "" }, { keepErrors: true });
+    form.reset({ key: "", value: "" , port: port}, { keepErrors: true });
   };
 
   const handleDeleteCommand = (index: number) => {
