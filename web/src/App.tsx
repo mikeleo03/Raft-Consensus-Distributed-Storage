@@ -11,9 +11,7 @@ function App() {
 
   return (
     <Flex direction="column" h="100vh">
-      <Flex as="header" backgroundColor="blue.500" backdropFilter="saturate(180%) blur(5px)"
-        p={5} alignItems="center" w="100vw">
-        
+      <Flex as="header" backgroundColor="blue.500" backdropFilter="saturate(180%) blur(5px)" p={5} alignItems="center" w="100vw">   
         <Button colorScheme="teal" variant="solid" size="m" ml="auto" minW="10vw" minH="5vh">
           Sistressss
         </Button>
