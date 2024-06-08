@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from 'react';
+import { KeyValueResponse } from './types';
+import MainApi from './api';
 
 export enum MethodTypeString {
   PING = "Ping",
@@ -71,11 +73,56 @@ function App() {
 
   async function onSubmit(data: any) {
     try {
+      // Create a payload
+      let commandValue = "";
+
+      switch (commandType) {
+        case MethodTypeString.PING:
+          commandValue = "ping";
+          break;
+        case MethodTypeString.GET:
+          commandValue = `get ${data.key}`;
+          break;
+        case MethodTypeString.SET:
+          commandValue = `set ${data.key} ${data.value}`;
+          break;
+        case MethodTypeString.STRLN:
+          commandValue = `strln ${data.key}`;
+          break;
+        case MethodTypeString.DEL:
+          commandValue = `del ${data.key}`;
+          break;
+        case MethodTypeString.APPEND:
+          commandValue = `append ${data.key} ${data.value}`;
+          break;
+        default:
+          throw new Error("Unknown command type");
+      }
+
+      // Constructing the address structure
+      const address = {
+        ip: "localhost",
+        port: 8000
+      }
+
+      // Constructing the payload structure
+      const payload = {
+        address: address,
+        command: commandValue,
+      };
+
       setOnUpdate(true);
-      console.log(data);
-      toast.success("Thank you for subscribing!");
+      const response: KeyValueResponse = await MainApi.request(payload);
+
+      if (response.status === "success") {
+        console.log(response.data);
+        toast.success(response.data);
+      } else {
+        toast.error(response.data);
+      }
     } catch (error) {
-      toast.error((error as any)?.message || 'Server is unreachable. Please try again later.');
+      console.error("Login error:", error);
+      throw error;
     } finally {
       setOnUpdate(false);
     }
