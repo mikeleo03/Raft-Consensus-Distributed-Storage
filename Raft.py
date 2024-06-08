@@ -407,12 +407,14 @@ class RaftNode:
                     "voted_for": None,
                 })
                 self.stable_storage.storeAll(stable_vars)
+      
             all_sync = (
                                 (request["prev_last_index"] == 0 or stable_vars["log"][request["prev_last_index"]-1]["term"] == stable_vars["election_term"] ) and 
-                len(stable_vars["log"]) >= request["prev_last_index"]
+                (len(stable_vars["log"]) >= request["prev_last_index"])
             )  and (
-                request["prev_last_index"] == 0 or stable_vars["log"][request["prev_last_index"]]["term"] == request["prev_last_term"]
+                request["prev_last_index"] == 0 or stable_vars["log"][request["prev_last_index"]-1]["term"] == request["prev_last_term"]
             )
+            
             response = {
                 "heartbeat_response": "ack",
                 "address": self.address,
