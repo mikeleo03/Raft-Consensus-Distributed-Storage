@@ -8,61 +8,78 @@ import { Form, FormField, FormItem, FormMessage, FormControl } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export enum MethodTypeString {
   PING = "Ping",
-  APPEND = "Append",
   GET = "Get",
   SET = "Set",
+  DEL = "Del",
+  STRLN = "Strln",
+  APPEND = "Append",
   REQUESTLOG = "Request Log"
 }
 
-const FormSchema = z.object({
-  key: z.string().min(1, {
-    message: "Key is required and cannot be empty.",
-  }),
-
-  value: z.string().min(1, {
-    message: "Value is required and cannot be empty.",
-  }),
-});
+const createFormSchema = (disableKey: boolean, disableValue: boolean) => {
+  return z.object({
+    key: z.string().refine(val => disableKey || val.length > 0, {
+      message: "Key is required and cannot be empty.",
+    }),
+    value: z.string().refine(val => disableValue || val.length > 0, {
+      message: "Value is required and cannot be empty.",
+    }),
+  });
+};
 
 function App() {
   const [onUpdate, setOnUpdate] = useState<boolean>(false);
+  const [disableKey, setDisableKey] = useState(true);
+  const [disableValue, setDisableValue] = useState(true);
   const [commandType, setCommandType] = useState<string>(MethodTypeString.PING);
 
-  const form = useForm<z.infer<typeof FormSchema>>({
-      resolver: zodResolver(FormSchema),
-      defaultValues: {
-        key: "",
-        value: ""
-      },
-  })
+  const form = useForm({
+    resolver: zodResolver(createFormSchema(disableKey, disableValue)),
+    defaultValues: {
+      key: "",
+      value: ""
+    },
+  });
 
-  async function onSubmit(data: z.infer<typeof FormSchema>) {
-      try {
-        // TODO (leon): Handle this
-        /* const payload: SubscriptionRequest = {
-            name: data.name,
-            email: data.email
-        }; */
-        setOnUpdate(true);
-
-        // Submit the response
-        console.log(data);
-        toast.success("Thank you for subscribing!");
-      } catch (error) {
-        toast.error((error as any)?.message || 'Server is unreachable. Please try again later.');
-      } finally {
-        setOnUpdate(false);
+  useEffect(() => {
+    form.reset(
+      {},
+      {
+        keepErrors: true,
+        keepDirty: true,
+        keepValues: true,
       }
-  }
+    );
+  }, [disableKey, disableValue]);
 
   const handleMethodChange = (type: string) => {
     const value = type as MethodTypeString;
     setCommandType(value);
+    setDisableKey(value === MethodTypeString.PING || value === MethodTypeString.REQUESTLOG);
+    setDisableValue(
+      value === MethodTypeString.PING ||
+      value === MethodTypeString.REQUESTLOG ||
+      value === MethodTypeString.GET ||
+      value === MethodTypeString.STRLN ||
+      value === MethodTypeString.DEL
+    );
   };
+
+  async function onSubmit(data: any) {
+    try {
+      setOnUpdate(true);
+      console.log(data);
+      toast.success("Thank you for subscribing!");
+    } catch (error) {
+      toast.error((error as any)?.message || 'Server is unreachable. Please try again later.');
+    } finally {
+      setOnUpdate(false);
+    }
+  }
 
   return (
     <Flex direction="column" h="100vh">
@@ -89,9 +106,11 @@ function App() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value={MethodTypeString.PING}>Ping</SelectItem>
-                            <SelectItem value={MethodTypeString.APPEND}>Append</SelectItem>
                             <SelectItem value={MethodTypeString.GET}>Get</SelectItem>
                             <SelectItem value={MethodTypeString.SET}>Set</SelectItem>
+                            <SelectItem value={MethodTypeString.STRLN}>Strln</SelectItem>
+                            <SelectItem value={MethodTypeString.DEL}>Del</SelectItem>
+                            <SelectItem value={MethodTypeString.APPEND}>Append</SelectItem>
                             <SelectItem value={MethodTypeString.REQUESTLOG}>Request Log</SelectItem>
                         </SelectContent>
                       </Select>
@@ -102,7 +121,7 @@ function App() {
                         render={({ field }) => (
                             <FormItem className='w-1/3 rounded-2xl'>
                                 <FormControl>
-                                    <Input placeholder="Key" {...field} className="md:text-sm text-base border-black" />
+                                    <Input placeholder="Key" {...field} disabled={disableKey} className="md:text-sm text-base border-black" />
                                 </FormControl>
                                 <FormMessage className="text-left"/>
                             </FormItem>
@@ -114,7 +133,7 @@ function App() {
                         render={({ field }) => (
                             <FormItem className='w-1/3 rounded-2xl'>
                                 <FormControl>
-                                    <Input placeholder="Value" {...field} className="md:text-sm text-base border-black" />
+                                    <Input placeholder="Value" {...field} disabled={disableValue} className="md:text-sm text-base border-black" />
                                 </FormControl>
                                 <FormMessage className="text-left"/>
                             </FormItem>
