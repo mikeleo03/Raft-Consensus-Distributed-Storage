@@ -501,9 +501,8 @@ class RaftNode:
             
         if latest_ack > stable_var["commit_length"] and log[latest_ack].term == stable_var["election_term"]:
             for i in range(stable_var["commit_length"], latest_ack + 1):
-                value = self.app.executing_log(log[i])
-                print("Dari commit", value)
-                stable_var["log"][i]["value"] = value
+                self.app.executing_log(log[i])
+                print("Dari commit", log[i]["value"])
                                               
             stable_var["commit_length"] = latest_ack
             self.stable_storage.storeAll(stable_var)
@@ -526,9 +525,8 @@ class RaftNode:
         commit_length = stable_var["commit_length"]
         if leader_commit > commit_length:
             for i in range(commit_length, leader_commit):
-                value = self.app.executing_log(log[i])
-                print("Dari append entries", value)
-                stable_var["log"][i]["value"] = value
+                self.app.executing_log(log[i])
+                print("Dari append entries", log[i]["value"])
             stable_var["commit_length"] = leader_commit
 
         self.stable_storage.storeAll(stable_var)
@@ -541,8 +539,10 @@ class RaftNode:
                 log = Log({
                     "term": stable_vars["election_term"],
                     "command": request["command"],
-                    "value": request["value"],
+                    "value": "",
                 })
+                self.app.executing_log(log)
+                request["value"] = log["value"]
                 stable_vars["log"].append(log)
                 self.log.append(log)
                 self.stable_storage.storeAll(stable_vars)
