@@ -538,13 +538,11 @@ class RaftNode:
         request: ExecuteRequest = self.message_parser.deserialize(json_request)
         if (self.type != NodeType.LEADER) : # Redirect to leader if not leader
             resp = self.__send_request({"command": request["command"], "value" : ""}, "execute", self.cluster_leader_addr)
-            print("resp:", resp)
             response = ExecuteResponse({
                 "status": resp["status"],
                 "address": resp["address"],
                 "data": resp["data"]
             })
-            print("response", response)
             return self.message_parser.serialize(response)
         try:
             with self.stable_storage as stable_vars:

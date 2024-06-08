@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Loader2, Trash } from "lucide-react";
 import { toast } from "react-toastify";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormField, FormItem, FormMessage, FormControl } from "@/components/ui/form";
+import { Form, FormField, FormItem, FormMessage, FormControl, FormLabel } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,9 @@ const createFormSchema = (disableKey: boolean, disableValue: boolean) => {
     value: z.string().refine(val => disableValue || val.length > 0, {
       message: "Value is required and cannot be empty.",
     }),
+    port: z.number().nonnegative().min(1, {
+      message: "Port must be a number greater than or equal to 1.",
+    }),
   });
 };
 
@@ -37,13 +40,14 @@ function App() {
   const [disableKey, setDisableKey] = useState(true);
   const [disableValue, setDisableValue] = useState(true);
   const [commandType, setCommandType] = useState<string>(MethodTypeString.PING);
-  const [commands, setCommands] = useState<{ type: MethodTypeString; key: string; value: string }[]>([]);
+  const [commands, setCommands] = useState<{ type: MethodTypeString; key: string; value: string; port: number }[]>([]);
 
   const form = useForm({
     resolver: zodResolver(createFormSchema(disableKey, disableValue)),
     defaultValues: {
       key: "",
-      value: ""
+      value: "",
+      port: 8000,
     },
   });
 
@@ -72,8 +76,8 @@ function App() {
   };
 
   const handleAddCommand = () => {
-    const { key, value } = form.getValues();
-    setCommands([...commands, { type: commandType as MethodTypeString, key, value }]);
+    const { key, value, port } = form.getValues();
+    setCommands([...commands, { type: commandType as MethodTypeString, key, value, port }]);
     form.reset({ key: "", value: "" }, { keepErrors: true });
   };
 
@@ -83,7 +87,7 @@ function App() {
     setCommands(updatedCommands);
   };
 
-  const executeCommand = async (command: { type: MethodTypeString; key: string; value: string }) => {
+  const executeCommand = async (command: { type: MethodTypeString; key: string; value: string; port: number }) => {
     let commandValue = "";
 
     switch (command.type) {
@@ -111,7 +115,7 @@ function App() {
 
     const address = {
       ip: "localhost",
-      port: 8000
+      port: command.port
     };
 
     const payload = {
@@ -167,7 +171,8 @@ function App() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleAddCommand)} className="w-full space-y-4 justify-center">
             <div className='flex flex-row justify-center items-center px-32 w-full'>
-              <div className='w-1/4'>
+              <div className='w-1/4 space-y-2'>
+                <FormLabel>Command</FormLabel>
                 <Select value={commandType} onValueChange={handleMethodChange}>
                   <SelectTrigger className="w-full h-10 bg-gray-800 border-none text-white">
                     <SelectValue placeholder="Choose Method" />
@@ -188,6 +193,7 @@ function App() {
                 name="key"
                 render={({ field }) => (
                   <FormItem className='w-1/4 rounded-2xl'>
+                    <FormLabel>Key</FormLabel>
                     <FormControl>
                       <Input placeholder="Key" {...field} disabled={disableKey} className="md:text-sm text-base border-black" />
                     </FormControl>
@@ -200,6 +206,7 @@ function App() {
                 name="value"
                 render={({ field }) => (
                   <FormItem className='w-1/4 rounded-2xl'>
+                    <FormLabel>Value</FormLabel>
                     <FormControl>
                       <Input placeholder="Value" {...field} disabled={disableValue} className="md:text-sm text-base border-black" />
                     </FormControl>
@@ -207,12 +214,25 @@ function App() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="ml-4">Add Command</Button>
+              <Button type="submit" className="ml-4 mt-8 mr-6">Add Command</Button>
+              <FormField
+                control={form.control}
+                name="port"
+                render={({ field }) => (
+                  <FormItem className='w-1/4 rounded-2xl'>
+                    <FormLabel>Port</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Port" {...field} className="md:text-sm text-base border-black" type="number" onChange={e => field.onChange(parseInt(e.target.value))} />
+                    </FormControl>
+                    <FormMessage className="text-left" />
+                  </FormItem>
+                )}
+              />
             </div>
           </form>
         </Form>
         <div className="w-full px-32">
-          <h3 className="text-lg font-semibold mb-2">Commands:</h3>
+          <h3 className="text-lg font-semibold mb-2">List of Commands</h3>
           <ul className="list-disc pl-5 space-y-2">
             {commands.map((cmd, index) => (
               <li key={index} className="bg-gray-200 p-2 rounded-lg flex justify-between items-center">
