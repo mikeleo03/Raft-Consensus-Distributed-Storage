@@ -1,7 +1,6 @@
-import { Flex } from '@chakra-ui/react';
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash } from "lucide-react";
 import { toast } from "react-toastify";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormField, FormItem, FormMessage, FormControl } from "@/components/ui/form";
@@ -78,6 +77,12 @@ function App() {
     form.reset({ key: "", value: "" }, { keepErrors: true });
   };
 
+  const handleDeleteCommand = (index: number) => {
+    const updatedCommands = [...commands];
+    updatedCommands.splice(index, 1);
+    setCommands(updatedCommands);
+  };
+
   const executeCommand = async (command: { type: MethodTypeString; key: string; value: string }) => {
     let commandValue = "";
 
@@ -128,9 +133,10 @@ function App() {
         results.push(result);
       }
 
-      console.log(results);
-      toast.success(results.join("\n"));
-      setCommands([]); // Clear commands after submission
+      for (const result of results) {
+        toast.success(result);
+      }
+      setCommands([]);
     } catch (error) {
       console.error("Login error:", error);
       toast.error("An error occurred while processing commands.");
@@ -140,14 +146,23 @@ function App() {
   }
 
   return (
-    <Flex direction="column" h="100vh">
-      <Flex as="header" backgroundColor="blue.500" backdropFilter="saturate(180%) blur(5px)" p={5} alignItems="center" w="100vw">
-        <Button>Sistressss</Button>
-      </Flex>
+    <>
+      <div className="flex flex-col items-center text-center justify-center bg-primary mb-8 w-full h-12 sticky top-0 z-50 text-white">
+        <div className="flex items-center w-full justify-between px-8 py-4">
+          <div className="flex items-center space-x-10 font-bold">
+            Key-value Store Web Client
+          </div>
+
+          {/* Right Side Links */}
+          <div className="flex items-center space-x-5 md:block hidden">
+            Created with stress 🤯😵‍💫 by Sistress
+          </div> 
+        </div>
+      </div>
       <div className='flex flex-col justify-center items-center h-full space-y-6'>
         <div className='flex flex-col justify-center'>
           <div className='text-3xl font-bold text-center'>Key-value Store</div>
-          <div className='text-xl mt-3'>Add new key-value pair to our system!</div>
+          <div className='text-xl mt-2'>Add and modify key-value pair to our system!</div>
         </div>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleAddCommand)} className="w-full space-y-4 justify-center">
@@ -200,8 +215,11 @@ function App() {
           <h3 className="text-lg font-semibold mb-2">Commands:</h3>
           <ul className="list-disc pl-5 space-y-2">
             {commands.map((cmd, index) => (
-              <li key={index} className="bg-gray-200 p-2 rounded-lg">
-                {cmd.type} {cmd.key} {cmd.value}
+              <li key={index} className="bg-gray-200 p-2 rounded-lg flex justify-between items-center">
+                <div className='px-4'>
+                  {cmd.type} {cmd.key} {cmd.value}
+                </div>
+                <Button onClick={() => handleDeleteCommand(index)} className="text-red-500"><Trash className="h-4 w-4" /></Button>
               </li>
             ))}
           </ul>
@@ -221,7 +239,7 @@ function App() {
           </Button>
         </div>
       </div>
-    </Flex>
+    </>
   )
 }
 
