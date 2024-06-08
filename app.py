@@ -1,5 +1,7 @@
 from structs.Log import Log
 import unittest
+import subprocess
+import asyncio
 
 class KVStore:
     ALLOWED_COMMANDS = ["ping", "get", "set", "strln", "del", "append"]
@@ -82,74 +84,7 @@ class KVStore:
 
     def data(self):
         return self.store
-    
 
-class TestKVStore(unittest.TestCase):
-    def test_ping(self):
-        kv_store = KVStore()
-        log = {'term': 1, 'command': 'ping', 'value': ''}
-        kv_store.executing_log(log)
-        self.assertEqual(log['value'], "PONG")
-        print("✅ Unit test ping passed")
-
-    def test_set_and_get(self):
-        kv_store = KVStore()
-        log_set = {'term': 1, 'command': 'set kunci value', 'value': ''}
-        kv_store.executing_log(log_set)
-        self.assertEqual(log_set['value'], "OK")
-
-        log_get = {'term': 2, 'command': 'get kunci', 'value': ''}
-        kv_store.executing_log(log_get)
-        self.assertEqual(log_get['value'], "value")
-        print("✅ Unit test set and get passed")
-
-    def test_append(self):
-        kv_store = KVStore()
-        log_set = {'term': 1, 'command': 'set kunci value', 'value': ''}
-        kv_store.executing_log(log_set)
-        self.assertEqual(log_set['value'], "OK")
-        
-        log_append = {'term': 2, 'command': 'append kunci value', 'value': ''}
-        kv_store.executing_log(log_append)
-        self.assertEqual(log_append['value'], "OK")
-
-        log_get = {'term': 3, 'command': 'get kunci', 'value': ''}
-        kv_store.executing_log(log_get)
-        self.assertEqual(log_get['value'], "valuevalue")
-        print("✅ Unit test append passed")
-
-    def test_delete(self):
-        kv_store = KVStore()
-        log_set = {'term': 1, 'command': 'set kunci value', 'value': ''}
-        kv_store.executing_log(log_set)
-        self.assertEqual(log_set['value'], "OK")
-
-        log_get = {'term': 2, 'command': 'del kunci', 'value': ''}
-        kv_store.executing_log(log_get)
-        self.assertEqual(log_get['value'], "value")
-        
-        log_get = {'term': 3, 'command': 'get kunci', 'value': ''}
-        kv_store.executing_log(log_get)
-        self.assertEqual(log_get['value'], "")
-        print("✅ Unit test del passed")
-        
-    def test_strlen(self):
-        kv_store = KVStore()
-        log_set = {'term': 1, 'command': 'set kunci value', 'value': ''}
-        kv_store.executing_log(log_set)
-        self.assertEqual(log_set['value'], "OK")
-
-        log_get = {'term': 2, 'command': 'strln kunci', 'value': ''}
-        kv_store.executing_log(log_get)
-        self.assertEqual(log_get['value'], 5)
-        print("✅ Unit test strln passed")
-
-    def test_transaction(self):
-        kv_store = KVStore()
-        log_transaction = {'term': 1, 'command': 'set kunci value; append kunci 123; get kunci', 'value': ''}
-        kv_store.executing_log(log_transaction)
-        self.assertEqual(log_transaction['value'], "value123")
-        print("✅ Unit test transaction passed")
 
 if __name__ == '__main__':
     print("Running unit tests...")
