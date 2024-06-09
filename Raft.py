@@ -319,7 +319,7 @@ class RaftNode:
                     if addr != self.address and addr != Address(**req["address"]):
                         self.__print_log(ColorLog._MAGENTA.value + f" Updating membership for {addr} " + ColorLog._ENDC.value)
                         # reset socket timeout for updating membership
-                        socket.setdefaulttimeout(5*RaftNode.RPC_TIMEOUT)
+                        socket.setdefaulttimeout(10*RaftNode.RPC_TIMEOUT)
                         try:
                             res = self.__send_request({"address": Address(**req["address"])}, "update_membership", addr)
                         except:
@@ -565,7 +565,7 @@ class RaftNode:
         request: ExecuteRequest = self.message_parser.deserialize(json_request)
         if (self.type != NodeType.LEADER) : # Redirect to leader if not leader
             #reset socket timeout if redirecting to leader
-            socket.setdefaulttimeout(5*RaftNode.RPC_TIMEOUT)
+            socket.setdefaulttimeout(15*RaftNode.RPC_TIMEOUT)
             resp = self.__send_request({"command": request["command"], "value" : ""}, "execute", self.cluster_leader_addr)
             response = ExecuteResponse({
                 "status": resp["status"],

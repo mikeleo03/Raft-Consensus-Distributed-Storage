@@ -88,19 +88,22 @@ class TestKVStore(unittest.TestCase):
 class TestMembership(unittest.TestCase):
     def test_fail_to_apply_membership(self):
         print(ColorLog.colorize("Running test fail to apply membership for 45 seconds", ColorLog._HEADER))
-        with subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE) as follower:
+        with subprocess.Popen(["python", "Server.py", "localhost", "4001", "localhost", "4000"], stdout=subprocess.PIPE) as follower:
             time.sleep(45)
             self.assertFalse(follower.poll() is not None)
             follower.kill()
+            follower.stdout.close()  # Ensure resources are released
+        os.remove("storage/localhost_4001.json")
         print("✅ Unit test fail to apply membership passed")
+
     
     def test_success_to_apply_membership(self):
         print(ColorLog.colorize("Running test success to apply membership for 15 seconds", ColorLog._HEADER))
         leader = None
         follower = None
         try:
-            leader = subprocess.Popen(["python", "Server.py", "localhost", "5000"], stdout=subprocess.PIPE)
-            follower = subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE)
+            leader = subprocess.Popen(["python", "Server.py", "localhost", "6000"], stdout=subprocess.PIPE)
+            follower = subprocess.Popen(["python", "Server.py", "localhost", "6001", "localhost", "6000"], stdout=subprocess.PIPE)
             time.sleep(15)
             self.assertTrue(follower.poll() is None)
         finally:
@@ -112,6 +115,8 @@ class TestMembership(unittest.TestCase):
                 leader.terminate()
                 leader.kill()
                 leader.stdout.close()  # Ensure resources are released
+        os.remove("storage/localhost_6000.json")
+        os.remove("storage/localhost_6001.json")
         print("✅ Unit test success to apply membership passed")
         
 class TestLogReplication(unittest.TestCase):
@@ -162,16 +167,19 @@ class TestLogReplication(unittest.TestCase):
                 client.terminate()
                 client.kill()
                 client.stdout.close()  # Ensure resources are released
+        # delete storage
+        os.remove("storage/localhost_8001.json")
+        os.remove("storage/localhost_8002.json")
         print("✅ Unit test success to replicate log passed")
 
 class TestHeartbeat(unittest.TestCase):
     def test_heartbeat_request(self):
         print(ColorLog.colorize("Running test to send heartbeat request", ColorLog._HEADER))
         try:
-            leader_address = Address("localhost", 5000)
-            follower1_address = Address("localhost", 5001)
-            leader = subprocess.Popen(["python", "Server.py", "localhost", "5000"], stdout=subprocess.PIPE)
-            follower = subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE)
+            leader_address = Address("localhost", 3100)
+            follower1_address = Address("localhost", 3101)
+            leader = subprocess.Popen(["python", "Server.py", "localhost", "3100"], stdout=subprocess.PIPE)
+            follower = subprocess.Popen(["python", "Server.py", "localhost", "3101", "localhost", "3100"], stdout=subprocess.PIPE)
             request_dummy = {
                             "leader_addr": leader_address,
                             "election_term": 0,
@@ -192,7 +200,41 @@ class TestHeartbeat(unittest.TestCase):
                 leader.terminate()
                 leader.kill()
                 leader.stdout.close()  # Ensure resources are released
+        # delete storage
+        os.remove("storage/localhost_3100.json")
+        os.remove("storage/localhost_3101.json")
         print("✅ Unit test success to send heartbeat message")
+
+class TestVoting(unittest.TestCase):
+    def test_vote_request(self):
+        print(ColorLog.colorize("Running test to send vote request", ColorLog._HEADER))
+        try:
+            leader_address = Address("localhost", 4100)
+            follower1_address = Address("localhost", 4101)
+            leader = subprocess.Popen(["python", "Server.py", "localhost", "4100"], stdout=subprocess.PIPE)
+            follower = subprocess.Popen(["python", "Server.py", "localhost", "4101", "localhost", "4100"], stdout=subprocess.PIPE)
+            request_dummy = {
+                            "candidate_addr": follower1_address,
+                            "election_term": 0,
+                            "last_term": 0,
+                            "last_index": 0,
+                        } 
+            rpc = RPCHandler()
+            response = rpc.request(leader_address, "vote", request_dummy)
+            self.assertIsNotNone(response)
+        finally:
+            if follower:
+                follower.terminate()
+                follower.kill()
+                follower.stdout.close()  # Ensure resources are released
+            if leader:
+                leader.terminate()
+                leader.kill()
+                leader.stdout.close()  # Ensure resources are released
+        # delete storage
+        os.remove("storage/localhost_4100.json")
+        os.remove("storage/localhost_4101.json")
+        print("✅ Unit test success to send vote message")
                 
 
 
