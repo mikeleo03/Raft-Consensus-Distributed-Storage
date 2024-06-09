@@ -81,33 +81,33 @@ class TestKVStore(unittest.TestCase):
         print("✅ Unit test transaction passed")
 
 class TestMembership(unittest.TestCase):
-    # def test_fail_to_apply_membership(self):
-    #     print(ColorLog.colorize("Running test fail to apply membership for 45 seconds", ColorLog._HEADER))
-    #     with subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE) as follower:
-    #         time.sleep(45)
-    #         self.assertTrue(follower.poll() is not None)
-    #         follower.kill()
-    #     print("✅ Unit test fail to apply membership passed")
+    def test_fail_to_apply_membership(self):
+        print(ColorLog.colorize("Running test fail to apply membership for 45 seconds", ColorLog._HEADER))
+        with subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE) as follower:
+            time.sleep(45)
+            self.assertTrue(follower.poll() is not None)
+            follower.kill()
+        print("✅ Unit test fail to apply membership passed")
     
-    # def test_success_to_apply_membership(self):
-    #     print(ColorLog.colorize("Running test success to apply membership for 15 seconds", ColorLog._HEADER))
-    #     leader = None
-    #     follower = None
-    #     try:
-    #         leader = subprocess.Popen(["python", "Server.py", "localhost", "5000"], stdout=subprocess.PIPE)
-    #         follower = subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE)
-    #         time.sleep(15)
-    #         self.assertTrue(follower.poll() is None)
-    #     finally:
-    #         if follower:
-    #             follower.terminate()
-    #             follower.kill()
-    #             follower.stdout.close()  # Ensure resources are released
-    #         if leader:
-    #             leader.terminate()
-    #             leader.kill()
-    #             leader.stdout.close()  # Ensure resources are released
-    #     print("✅ Unit test success to apply membership passed")
+    def test_success_to_apply_membership(self):
+        print(ColorLog.colorize("Running test success to apply membership for 15 seconds", ColorLog._HEADER))
+        leader = None
+        follower = None
+        try:
+            leader = subprocess.Popen(["python", "Server.py", "localhost", "5000"], stdout=subprocess.PIPE)
+            follower = subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE)
+            time.sleep(15)
+            self.assertTrue(follower.poll() is None)
+        finally:
+            if follower:
+                follower.terminate()
+                follower.kill()
+                follower.stdout.close()  # Ensure resources are released
+            if leader:
+                leader.terminate()
+                leader.kill()
+                leader.stdout.close()  # Ensure resources are released
+        print("✅ Unit test success to apply membership passed")
         
     def test_success_commit_log(self):
         print(ColorLog.colorize("Running test success to commit log for 15 seconds", ColorLog._HEADER))
