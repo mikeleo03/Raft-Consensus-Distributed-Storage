@@ -158,6 +158,6 @@ class TestMembership(unittest.TestCase):
                 client.terminate()
                 client.kill()
                 client.stdout.close()  # Ensure resources are released
-
+        print("✅ Unit test success to commit log passed")
 if __name__ == '__main__':
     unittest.main(verbosity=0)
