@@ -7,8 +7,13 @@ import signal
 import warnings
 
 import requests
+from Address import Address
+from Raft import RaftNode
+from Server import start_serving
 from app import KVStore
 from structs.ColorLog import ColorLog
+from structs.NodeType import NodeType
+from utils.RPCHandler import RPCHandler
 
 # Suppress ResourceWarning
 warnings.simplefilter("ignore", ResourceWarning)
@@ -158,6 +163,38 @@ class TestLogReplication(unittest.TestCase):
                 client.kill()
                 client.stdout.close()  # Ensure resources are released
         print("✅ Unit test success to replicate log passed")
-        
+
+class TestHeartbeat(unittest.TestCase):
+    def test_heartbeat_request(self):
+        print(ColorLog.colorize("Running test to send heartbeat request", ColorLog._HEADER))
+        try:
+            leader_address = Address("localhost", 5000)
+            follower1_address = Address("localhost", 5001)
+            leader = subprocess.Popen(["python", "Server.py", "localhost", "5000"], stdout=subprocess.PIPE)
+            follower = subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE)
+            request_dummy = {
+                            "leader_addr": leader_address,
+                            "election_term": 0,
+                            "prev_last_term": 0,
+                            "prev_last_index": 0,
+                            "entries": [],
+                            "leader_commit": 0,
+                        } 
+            rpc = RPCHandler()
+            response = rpc.request(leader_address, "heartbeat", request_dummy)
+            self.assertIsNotNone(response)
+        finally:
+            if follower:
+                follower.terminate()
+                follower.kill()
+                follower.stdout.close()  # Ensure resources are released
+            if leader:
+                leader.terminate()
+                leader.kill()
+                leader.stdout.close()  # Ensure resources are released
+        print("✅ Unit test success to send heartbeat message")
+                
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=0)
