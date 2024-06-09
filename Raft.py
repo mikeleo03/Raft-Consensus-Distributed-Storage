@@ -248,6 +248,7 @@ class RaftNode:
             prev_last_term = stable_vars["log"][prev_last_index - 1]["term"] if prev_last_index > 0 else 0
 
             try:
+                _dict_to_str : str = json.dumps(self.app.store)
                 response = self.__send_request({
                     "leader_addr": self.address,
                     "election_term": stable_vars["election_term"],
@@ -255,6 +256,7 @@ class RaftNode:
                     "prev_last_index": prev_last_index,
                     "entries": next_index,
                     "leader_commit": stable_vars["commit_length"],
+                    "app_store" : _dict_to_str
                 }, "heartbeat", addr)
                 if response is None:
                     self.__print_log(f"No response from {addr} for heartbeat.")
@@ -452,6 +454,8 @@ class RaftNode:
                 ack = int(request["prev_last_index"]) + len(request["entries"])
                 response["ack"] = ack
                 response["sync"] = True
+                _store_response : dict = json.loads(request["app_store"])
+                self.app.store = _store_response
             else:
                 response["ack"] = 0
                 response["sync"] = False
