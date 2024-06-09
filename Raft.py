@@ -23,10 +23,10 @@ import math
 
 class RaftNode:
     HEARTBEAT_INTERVAL = 1
-    RETRY_COUNT = 5
-    ELECTION_TIMEOUT_MIN = 8
-    ELECTION_TIMEOUT_MAX = 18
-    RPC_TIMEOUT = 0.5
+    RETRY_COUNT = 10
+    ELECTION_TIMEOUT_MIN = 20
+    ELECTION_TIMEOUT_MAX = 50
+    RPC_TIMEOUT = 5
     _LOG_ROLE = {
         NodeType.FOLLOWER: ColorLog._CYAN.value + "[Follower]" + ColorLog._ENDC.value,
         NodeType.CANDIDATE: ColorLog._MAGENTA.value + "[Candidate]" + ColorLog._ENDC.value,
@@ -143,11 +143,12 @@ class RaftNode:
                 self.__print_log("Stopping Follower Server...")
                 return
             self.debug()
-        self.__print_log("Starting election...")
+        
         self.election_term += 1
-        self.__start_election()
+        self.__print_log(ColorLog.colorize(f"Starting election for term {self.election_term}...", ColorLog._MAGENTA))
+        await self.__start_election()
 
-    def __start_election(self):
+    async def __start_election(self):
         #randomize timeout
         self.randomize_timeout()
 
@@ -161,9 +162,15 @@ class RaftNode:
             self.__print_log(f"Sending vote requests to other nodes...")
             for addr in self.cluster_addr_list:
                 if self.address != addr:
-                    self.send_vote_request(addr)
-                if(self.type != NodeType.CANDIDATE):
-                    return
+                    await self.send_vote_request(addr)
+
+                # after voting, check if the node has won the election
+                if(self.type == NodeType.FOLLOWER):
+                    return self.__initialize_as_follower()
+                elif(self.type == NodeType.LEADER):
+                    return self.__initialize_as_leader()
+                elif (time.time() > self.timeout_time):
+                    break
             self.__print_log(f"Vote results: {self.votes_received}")
             self.__print_log("retrying election...")
 
@@ -176,12 +183,13 @@ class RaftNode:
         if(self.type == NodeType.CANDIDATE):
             self.__print_log(ColorLog.colorize("[TIMEOUT]", ColorLog._RED) + " Timeout Occured, retrying election for next term...")
             self.election_term += 1
-            return self.__start_election()
+            return await self.__start_election()
         else:
             return #finish election
 
-    def send_vote_request(self, addr: Address):
+    async def send_vote_request(self, addr: Address):
         with self.stable_storage as stable_vars:
+            stable_vars["election_term"] = self.election_term
             # request = {
             #     "candidate_addr": self.address,
             #     "election_term": stable_vars["election_term"],
@@ -196,7 +204,7 @@ class RaftNode:
             }
             try:
                 if(self.type == NodeType.FOLLOWER):
-                    return self.__initialize_as_follower()
+                    return
                 response = self.__send_request(request, "vote", addr)
             except Exception as e:
                 self.__print_log(f"Failed to get response from {addr} for vote request. Exception: {e}")
@@ -218,7 +226,10 @@ class RaftNode:
                 self.stable_storage.storeAll(stable_vars)
                 self.type = NodeType.FOLLOWER
                 self.votes_received = set()
-                return self.__initialize_as_follower()
+                return
+
+            if(self.type == NodeType.FOLLOWER):
+                return
 
             if response["status"] == ResponseStatus.SUCCESS.value:
                 self.votes_received.add(addr)
@@ -226,7 +237,7 @@ class RaftNode:
                     self.type = NodeType.LEADER
                     self.__print_log("Election won, changing to leader...")
                     self.__print_log(f"Voting result: {self.votes_received}")
-                    return self.__initialize_as_leader()
+                    return
     
 
     def send_heartbeat_msg(self, addr: Address):
@@ -359,8 +370,8 @@ class RaftNode:
         }
         while response["status"] != "success":
             try:
-                redirected_addr = Address(response["address"]["ip"], response["address"]["port"])
                 response = self.__send_request({"address": self.address}, "apply_membership", redirected_addr)
+                redirected_addr = Address(response["address"]["ip"], response["address"]["port"])
             except:
                 if retry_count < RaftNode.RETRY_COUNT:
                     self.__print_log("Didn't get response from leader, retrying...")
@@ -375,7 +386,7 @@ class RaftNode:
             # make response["cluster_addr_list"] as list of Address
             for addr in response["cluster_addr_list"]:
                 self.cluster_addr_list.append(Address(**addr))
-            self.cluster_leader_addr = redirected_addr
+            self.cluster_leader_addr = Address(response["address"]["ip"], response["address"]["port"])
             self.__print_log(f"Membership applied, current cluster: {self.cluster_addr_list}")
             self.__print_log(f"Current leader: {self.cluster_leader_addr}")
 
@@ -383,6 +394,15 @@ class RaftNode:
         self.__print_log(f"Sent request to {addr} : {request}")
         self.__print_log(f"RPC Name: {rpc_name}")
         response = self.rpc_handler.request(addr, rpc_name, request)
+        if response is None:
+            raise Exception(" " + ColorLog._WARNING.value + f"Failed to get a response from {addr} for {rpc_name} request" + ColorLog._ENDC.value + " ")
+        self.__print_log(f"Received response from {addr} : {response}")
+        return response
+    
+    async def __send_request_async(self, request: BaseMessage, rpc_name: str, addr: Address) -> "json":
+        self.__print_log(f"Sent async request to {addr} : {request}")
+        self.__print_log(f"RPC Name: {rpc_name}")
+        response = await self.rpc_handler.async_request(addr, rpc_name, request)
         if response is None:
             raise Exception(" " + ColorLog._WARNING.value + f"Failed to get a response from {addr} for {rpc_name} request" + ColorLog._ENDC.value + " ")
         self.__print_log(f"Received response from {addr} : {response}")
