@@ -586,33 +586,6 @@ class RaftNode:
                     "value": "",
                 })
                 self.app.executing_log(log)
-                ack_count = 0
-                for addr in self.cluster_addr_list :
-                    if addr != self.address :
-                        prev_last_index = self.sent_length.get(addr, 0)
-                        next_index = stable_vars["log"][prev_last_index:]
-                        prev_last_term = stable_vars["log"][prev_last_index - 1]["term"] if prev_last_index > 0 else 0
-                        response = self.__send_request({
-                            "leader_addr": self.address,
-                            "election_term": stable_vars["election_term"],
-                            "prev_last_term": prev_last_term,
-                            "prev_last_index": prev_last_index,
-                            "entries": next_index,
-                            "leader_commit": stable_vars["commit_length"],
-                        }, "heartbeat", addr)
-                        if not(response is None) and response["status"] == ResponseStatus.SUCCESS.value:
-                            ack_count += 1
-                print("ACK count :", ack_count)
-                if (ack_count < math.floor(len(self.cluster_addr_list) / 2)) :
-                    response = ExecuteResponse({
-                        "status": ResponseStatus.FAILED.value,
-                        "address": self.address,
-                        "reason": "ACK less than 50% + 1"
-                    })
-                    print(ColorLog.colorize("ACK less than 50% + 1", ColorLog._FAIL))
-                    return self.message_parser.serialize(response)
-
-                print(ColorLog.colorize("ACK >= 50% + 1", ColorLog._GREEN))
                 request["value"] = log["value"]
                 stable_vars["log"].append(log)
                 self.log.append(log)
