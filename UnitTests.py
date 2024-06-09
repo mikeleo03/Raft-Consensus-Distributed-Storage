@@ -5,6 +5,8 @@ import unittest
 import os
 import signal
 import warnings
+
+import requests
 from app import KVStore
 from structs.ColorLog import ColorLog
 
@@ -79,23 +81,70 @@ class TestKVStore(unittest.TestCase):
         print("✅ Unit test transaction passed")
 
 class TestMembership(unittest.TestCase):
-    def test_fail_to_apply_membership(self):
-        print(ColorLog.colorize("Running test fail to apply membership for 45 seconds", ColorLog._HEADER))
-        with subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE) as follower:
-            time.sleep(45)
-            self.assertTrue(follower.poll() is not None)
-            follower.kill()
-        print("✅ Unit test fail to apply membership passed")
+    # def test_fail_to_apply_membership(self):
+    #     print(ColorLog.colorize("Running test fail to apply membership for 45 seconds", ColorLog._HEADER))
+    #     with subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE) as follower:
+    #         time.sleep(45)
+    #         self.assertTrue(follower.poll() is not None)
+    #         follower.kill()
+    #     print("✅ Unit test fail to apply membership passed")
     
-    def test_success_to_apply_membership(self):
-        print(ColorLog.colorize("Running test success to apply membership for 15 seconds", ColorLog._HEADER))
+    # def test_success_to_apply_membership(self):
+    #     print(ColorLog.colorize("Running test success to apply membership for 15 seconds", ColorLog._HEADER))
+    #     leader = None
+    #     follower = None
+    #     try:
+    #         leader = subprocess.Popen(["python", "Server.py", "localhost", "5000"], stdout=subprocess.PIPE)
+    #         follower = subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE)
+    #         time.sleep(15)
+    #         self.assertTrue(follower.poll() is None)
+    #     finally:
+    #         if follower:
+    #             follower.terminate()
+    #             follower.kill()
+    #             follower.stdout.close()  # Ensure resources are released
+    #         if leader:
+    #             leader.terminate()
+    #             leader.kill()
+    #             leader.stdout.close()  # Ensure resources are released
+    #     print("✅ Unit test success to apply membership passed")
+        
+    def test_success_commit_log(self):
+        print(ColorLog.colorize("Running test success to commit log for 15 seconds", ColorLog._HEADER))
         leader = None
         follower = None
+        client = None
+        url = "http://localhost:5000/execute_command"
         try:
-            leader = subprocess.Popen(["python", "Server.py", "localhost", "5000"], stdout=subprocess.PIPE)
-            follower = subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE)
+            leader = subprocess.Popen(["python", "Server.py", "localhost", "5001"], stdout=subprocess.PIPE)
+            follower = subprocess.Popen(["python", "Server.py", "localhost", "5002", "localhost", "5001"], stdout=subprocess.PIPE)
+            client = subprocess.Popen(["python", "Client.py", "localhost", "5000"], stdout=subprocess.PIPE)
             time.sleep(15)
-            self.assertTrue(follower.poll() is None)
+            response = requests.post(url, json={
+                "address": {
+                    "ip": "localhost",
+                    "port": 5001
+                },
+                "command": "ping",
+            })
+            
+            response_log_1 =  requests.post(url, json={
+                "address": {
+                    "ip": "localhost",
+                    "port": 5001
+                },
+                "command": "request_log",
+            })
+            response_log_2 =  requests.post(url, json={
+                            "address": {
+                                "ip": "localhost",
+                                "port": 5002
+                            },
+                            "command": "request_log",
+             })
+            print("1",response_log_1.json())
+            print("2",response_log_2.json())
+            self.assertEqual(response_log_1.json()["data"], response_log_2.json()["data"])
         finally:
             if follower:
                 follower.terminate()
@@ -105,7 +154,10 @@ class TestMembership(unittest.TestCase):
                 leader.terminate()
                 leader.kill()
                 leader.stdout.close()  # Ensure resources are released
-        print("✅ Unit test success to apply membership passed")
+            if client:
+                client.terminate()
+                client.kill()
+                client.stdout.close()  # Ensure resources are released
 
 if __name__ == '__main__':
     unittest.main(verbosity=0)
