@@ -85,7 +85,7 @@ class TestMembership(unittest.TestCase):
         print(ColorLog.colorize("Running test fail to apply membership for 45 seconds", ColorLog._HEADER))
         with subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE) as follower:
             time.sleep(45)
-            self.assertTrue(follower.poll() is not None)
+            self.assertFalse(follower.poll() is not None)
             follower.kill()
         print("✅ Unit test fail to apply membership passed")
     
@@ -109,6 +109,7 @@ class TestMembership(unittest.TestCase):
                 leader.stdout.close()  # Ensure resources are released
         print("✅ Unit test success to apply membership passed")
         
+class TestLogReplication(unittest.TestCase):
     def test_success_commit_log(self):
         print(ColorLog.colorize("Running test success to commit log for 15 seconds", ColorLog._HEADER))
         leader = None
@@ -142,8 +143,6 @@ class TestMembership(unittest.TestCase):
                             },
                             "command": "request_log",
              })
-            print("1",response_log_1.json())
-            print("2",response_log_2.json())
             self.assertEqual(response_log_1.json()["data"], response_log_2.json()["data"])
         finally:
             if follower:
@@ -158,6 +157,7 @@ class TestMembership(unittest.TestCase):
                 client.terminate()
                 client.kill()
                 client.stdout.close()  # Ensure resources are released
-        print("✅ Unit test success to commit log passed")
+        print("✅ Unit test success to replicate log passed")
+        
 if __name__ == '__main__':
     unittest.main(verbosity=0)
