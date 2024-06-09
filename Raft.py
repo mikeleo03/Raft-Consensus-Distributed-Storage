@@ -564,16 +564,11 @@ class RaftNode:
     def execute(self, json_request: str) -> str:
         request: ExecuteRequest = self.message_parser.deserialize(json_request)
         if (self.type != NodeType.LEADER) : # Redirect to leader if not leader
-            #reset socket timeout if redirecting to leader
-            socket.setdefaulttimeout(15*RaftNode.RPC_TIMEOUT)
-            resp = self.__send_request({"command": request["command"], "value" : ""}, "execute", self.cluster_leader_addr)
             response = ExecuteResponse({
-                "status": resp["status"],
-                "address": resp["address"],
-                "data": resp["data"]
+                "status": ResponseStatus.REDIRECTED.value,
+                "address": self.cluster_leader_addr,
+                "data": ""
             })
-            #restore socket timeout
-            socket.setdefaulttimeout(RaftNode.RPC_TIMEOUT)
             return self.message_parser.serialize(response)
         try:
             with self.stable_storage as stable_vars:

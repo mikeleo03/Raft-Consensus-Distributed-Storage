@@ -6,6 +6,7 @@ from app import KVStore
 from typing import List
 from utils.RPCHandler import RPCHandler
 from messages.Execute import ExecuteRequest, ExecuteResponse
+from messages.Base import ResponseStatus
 
 _kvStore : KVStore
 
@@ -27,6 +28,10 @@ class Client:
         })
         print(server_address)
         resp = Client.rpc_handler.request(server_address, "execute", req)
+        # Redirect to leader
+        if (resp["status"] == ResponseStatus.REDIRECTED.value) :
+            print("Redirected to leader")
+            resp = Client.rpc_handler.request(resp["address"], "execute", req)
         return resp
 
 # Flask Server
