@@ -6,6 +6,7 @@ class ColorLog(Enum):
     _CYAN = '\033[96m'
     _MAGENTA = '\033[95m'
     _RED = '\033[91m'
+    _GREEN = '\033[92m'
     _WARNING = '\033[93m'
     _FAIL = '\033[91m'
     _ENDC = '\033[0m'

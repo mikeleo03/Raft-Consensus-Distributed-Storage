@@ -23,10 +23,10 @@ import math
 
 class RaftNode:
     HEARTBEAT_INTERVAL = 1
-    RETRY_COUNT = 10
-    ELECTION_TIMEOUT_MIN = 20
-    ELECTION_TIMEOUT_MAX = 50
-    RPC_TIMEOUT = 5
+    RETRY_COUNT = 15
+    ELECTION_TIMEOUT_MIN = 35
+    ELECTION_TIMEOUT_MAX = 60
+    RPC_TIMEOUT = 0.5
     _LOG_ROLE = {
         NodeType.FOLLOWER: ColorLog._CYAN.value + "[Follower]" + ColorLog._ENDC.value,
         NodeType.CANDIDATE: ColorLog._MAGENTA.value + "[Candidate]" + ColorLog._ENDC.value,
@@ -99,25 +99,32 @@ class RaftNode:
         print(ColorLog.colorize(f"[{self.address}]", ColorLog._BLUE) + f"[{time.strftime('%H:%M:%S')}]" + RaftNode._LOG_ROLE[self.type] + " " + text)
 
     def __initialize_as_leader(self):
-        self.__print_log("Initialize as leader node...")
         self.cluster_leader_addr = self.address
         self.type = NodeType.LEADER
         request = {
             "cluster_leader_addr": self.address
         }
         self.heartbeat_thread = Thread(target=asyncio.run, args=[self.__leader_heartbeat()])
+        #make sure handle dropped connection
+        socket.setdefaulttimeout(10*RaftNode.RPC_TIMEOUT)
         self.heartbeat_thread.start()
 
     def __initialize_as_follower(self):
-        self.__print_log("Initialize as follower node...")
         self.type = NodeType.FOLLOWER
         self.election_term = 0
         self.voted_for = None
         self.follower_timeout_thread = Thread(target=asyncio.run, args=[self.__follower_timeout()])
         self.randomize_timeout()
+        #make sure handle dropped connection
+        socket.setdefaulttimeout(10*RaftNode.RPC_TIMEOUT)
         self.follower_timeout_thread.start()
+    
 
     async def __leader_heartbeat(self):
+        #restore socket timeout
+        socket.setdefaulttimeout(RaftNode.RPC_TIMEOUT)
+        # log initialization
+        self.__print_log("Initialize as leader node...")
         while self.type == NodeType.LEADER:
             if time.time() - self.heartbeat_time > RaftNode.HEARTBEAT_INTERVAL:
                 self.__print_log("Sending heartbeat...")
@@ -130,9 +137,11 @@ class RaftNode:
                 self.__print_log("Stopping Leader Server...")
                 break
 
-            self.debug()
-
     async def __follower_timeout(self):
+        #restore socket timeout
+        socket.setdefaulttimeout(RaftNode.RPC_TIMEOUT)
+        # log initialization
+        self.__print_log("Initialize as follower node...")
         while self.type == NodeType.FOLLOWER:
             if time.time() > self.timeout_time:
                 self.__print_log(ColorLog.colorize("[TIMEOUT] ", ColorLog._RED) + "Timeout has occured, changing to candidate...")
@@ -142,7 +151,6 @@ class RaftNode:
             if self.election_term == 0xDEAD: 
                 self.__print_log("Stopping Follower Server...")
                 return
-            self.debug()
         
         self.election_term += 1
         self.__print_log(ColorLog.colorize(f"Starting election for term {self.election_term}...", ColorLog._MAGENTA))
@@ -156,7 +164,6 @@ class RaftNode:
         self.voted_for = self.address
         while(time.time() < self.timeout_time):
             self.votes_received = set()
-            self.__print_log(f"Starting election for term {self.election_term}")
             self.__print_log(f"Voted for {self.address}")
             self.votes_received.add(self.address)
             self.__print_log(f"Sending vote requests to other nodes...")
@@ -183,6 +190,7 @@ class RaftNode:
         if(self.type == NodeType.CANDIDATE):
             self.__print_log(ColorLog.colorize("[TIMEOUT]", ColorLog._RED) + " Timeout Occured, retrying election for next term...")
             self.election_term += 1
+            self.__print_log(ColorLog.colorize(f"Starting election for term {self.election_term}...", ColorLog._MAGENTA))
             return await self.__start_election()
         else:
             return #finish election
@@ -190,24 +198,16 @@ class RaftNode:
     async def send_vote_request(self, addr: Address):
         with self.stable_storage as stable_vars:
             stable_vars["election_term"] = self.election_term
-            # request = {
-            #     "candidate_addr": self.address,
-            #     "election_term": stable_vars["election_term"],
-            #     "last_log_term": stable_vars["log"][-1]["term"] if len(stable_vars["log"]) > 0 else 0,
-            #     "last_log_index": len(stable_vars["log"]) - 1,
-            # }
             request : BaseMessage = {
                 "candidate_addr": self.address,
                 "election_term": self.election_term,
-                # "last_log_term": stable_vars["log"][-1]["term"] if len(stable_vars["log"]) > 0 else 0,
-                # "last_log_index": len(stable_vars["log"]) - 1,
             }
             try:
                 if(self.type == NodeType.FOLLOWER):
                     return
                 response = self.__send_request(request, "vote", addr)
             except Exception as e:
-                self.__print_log(f"Failed to get response from {addr} for vote request. Exception: {e}")
+                self.__print_log(f"Failed to get response from {addr} for vote request")
                 return
             
             # unsuccessful vote request
@@ -233,6 +233,7 @@ class RaftNode:
 
             if response["status"] == ResponseStatus.SUCCESS.value:
                 self.votes_received.add(addr)
+                self.__print_log(ColorLog.colorize(f"Received vote from {addr}", ColorLog._GREEN))
                 if len(self.votes_received) >= math.floor(len(self.cluster_addr_list) / 2) + 1:
                     self.type = NodeType.LEADER
                     self.__print_log("Election won, changing to leader...")
@@ -317,10 +318,14 @@ class RaftNode:
                 for addr in self.cluster_addr_list:
                     if addr != self.address and addr != Address(**req["address"]):
                         self.__print_log(ColorLog._MAGENTA.value + f" Updating membership for {addr} " + ColorLog._ENDC.value)
+                        # reset socket timeout for updating membership
+                        socket.setdefaulttimeout(5*RaftNode.RPC_TIMEOUT)
                         try:
                             res = self.__send_request({"address": Address(**req["address"])}, "update_membership", addr)
                         except:
                             pass
+                        #restore socket timeout
+                        socket.setdefaulttimeout(RaftNode.RPC_TIMEOUT)
        
                         
                 return self.message_parser.serialize(response)
@@ -348,7 +353,7 @@ class RaftNode:
         # self.__print_log(ColorLog._MAGENTA.value + req + ColorLog._ENDC.value)
         if self.type == NodeType.FOLLOWER:
             req = self.message_parser.deserialize(req)
-            # self.__print_log(ColorLog._MAGENTA.value + f" Received new membership: {req['address']['ip']}:{req['address']['port']} " + ColorLog._ENDC.value)
+            self.__print_log(ColorLog._MAGENTA.value + f" Received new membership: {req['address']['ip']}:{req['address']['port']} " + ColorLog._ENDC.value)
             _new_addr = Address(**req["address"])
             self.cluster_addr_list.append(_new_addr)
 
@@ -387,7 +392,6 @@ class RaftNode:
             for addr in response["cluster_addr_list"]:
                 self.cluster_addr_list.append(Address(**addr))
             self.cluster_leader_addr = Address(response["address"]["ip"], response["address"]["port"])
-            self.__print_log(f"Membership applied, current cluster: {self.cluster_addr_list}")
             self.__print_log(f"Current leader: {self.cluster_leader_addr}")
 
     def __send_request(self, request: BaseMessage, rpc_name: str, addr: Address) -> "json":
@@ -415,7 +419,7 @@ class RaftNode:
         self.type = NodeType.FOLLOWER # make sure when receiving heartbeat, the node is a follower
         self.randomize_timeout()
         request = self.message_parser.deserialize(json_request)
-        self.__print_log(f"Received heartbeat from {request['leader_addr']}")
+        self.__print_log(f"Received heartbeat from {Address(**request['leader_addr'])}")
         with self.stable_storage as stable_vars:
             if request["election_term"] == stable_vars["election_term"]:
                 self.type = NodeType.FOLLOWER
@@ -560,15 +564,27 @@ class RaftNode:
     def execute(self, json_request: str) -> str:
         request: ExecuteRequest = self.message_parser.deserialize(json_request)
         if (self.type != NodeType.LEADER) : # Redirect to leader if not leader
+            #reset socket timeout if redirecting to leader
+            socket.setdefaulttimeout(5*RaftNode.RPC_TIMEOUT)
             resp = self.__send_request({"command": request["command"], "value" : ""}, "execute", self.cluster_leader_addr)
             response = ExecuteResponse({
                 "status": resp["status"],
                 "address": resp["address"],
                 "data": resp["data"]
             })
+            #restore socket timeout
+            socket.setdefaulttimeout(RaftNode.RPC_TIMEOUT)
             return self.message_parser.serialize(response)
         try:
             with self.stable_storage as stable_vars:
+                self.__print_log(f"Received command: {request['command']}")
+                if(request["command"] == "request_log"):
+                    response = ExecuteResponse({
+                        "status": ResponseStatus.SUCCESS.value,
+                        "address": self.address,
+                        "data": str(stable_vars["log"])
+                    })
+                    return self.message_parser.serialize(response)
                 log = Log({
                     "term": stable_vars["election_term"],
                     "command": request["command"],
@@ -600,14 +616,4 @@ class RaftNode:
     def randomize_timeout(self):
         self.timeout_time = time.time() + RaftNode.ELECTION_TIMEOUT_MIN + (RaftNode.ELECTION_TIMEOUT_MAX - RaftNode.ELECTION_TIMEOUT_MIN) * random.random()
 
-    # delete for later, USING FOR DEBUGGING IN 1hz PERIOD
-    def debug(self):
-        if(time.time() - self.debug_time > 1):
-            # self.__print_log("Debugging")
-            # self.__print_log(f"Current Cluster: {self.cluster_addr_list}")
-            # self.__print_log(f"Current Log: {self.log}")
-            # # iterarte to print thype of slef.cluster_addr_list
-            # for addr in self.cluster_addr_list:
-            #     self.__print_log(f"Address: {addr}")
-            self.debug_time = time.time()
             

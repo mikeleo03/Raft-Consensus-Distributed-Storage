@@ -41,11 +41,13 @@ def hello_world():
 @app.route('/execute_command', methods=['POST'])
 def execute_command():
     try:
+        print(request)
         data = request.get_json()
         command: str = data['command']
+        print(command)
 
         # Is INVALID COMMAND??
-        if(_kvStore._execute_single_command(command) == "Invalid command"):
+        if(_kvStore._execute_single_command(command) == "Invalid command" and command != "request_log"):
             # throw an exception
             raise Exception("Invalid command")
         

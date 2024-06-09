@@ -110,6 +110,9 @@ function App() {
       case MethodTypeString.APPEND:
         commandValue = `append ${command.key} ${command.value}`;
         break;
+      case MethodTypeString.REQUESTLOG:
+        commandValue = "request_log";
+        break;
       default:
         throw new Error("Unknown command type");
     }
@@ -135,6 +138,18 @@ function App() {
 
       for (const command of commands) {
         const result = await executeCommand(command);
+        if(command.type === MethodTypeString.REQUESTLOG) {
+          // Parse string like this: [{"command":"ping","timestamp":"2021-10-10T00:00:00.000Z","ip":"::1","port":8000}]
+     
+          let _result = result.replace(/'/g, '"');;
+          const logs = JSON.parse(_result);
+          results.push("Logs:");
+          for (const log of logs) {
+  
+            results.push(`term: ${log.term}, command: ${log.command}, value: ${log.value}`);
+          }
+          continue;
+        }
         results.push(result);
       }
 

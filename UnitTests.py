@@ -80,9 +80,9 @@ class TestKVStore(unittest.TestCase):
 
 class TestMembership(unittest.TestCase):
     def test_fail_to_apply_membership(self):
-        print(ColorLog.colorize("Running test fail to apply membership for 15 seconds", ColorLog._HEADER))
+        print(ColorLog.colorize("Running test fail to apply membership for 45 seconds", ColorLog._HEADER))
         with subprocess.Popen(["python", "Server.py", "localhost", "5001", "localhost", "5000"], stdout=subprocess.PIPE) as follower:
-            time.sleep(15)
+            time.sleep(45)
             self.assertTrue(follower.poll() is not None)
             follower.kill()
         print("✅ Unit test fail to apply membership passed")
