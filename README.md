@@ -84,8 +84,8 @@ This project is a distributed key-value in-memory storage system that offers sev
 # Contributors
 | NIM | Name | Task |
 | --- | --- | --- |
-| 13521108 | Michael Leon Putra Widhi | KV Store App, Client, Web Client, Unit Test KV Store App |
-| 13521131 | Jeremya Dharmawan Raharjo | Leader Election, Web Client |
+| 13521108 | Michael Leon Putra Widhi | KV Store App, Client, Web Client, Unit Test KV Store App, Transaction |
+| 13521131 | Jeremya Dharmawan Raharjo | Leader Election, Web Client, Unit Test Voting |
 | 13521132 | Dhanika Novlisariyanti | Replicate Log, Unit Test Replicate Log |
 | 13521155 | Kandida Edgina Gunawan | Heartbeat, Unit Test Heartbeat |
 | 13521172 | Nathan Tenka | Membership, Unit Test Membership |
