@@ -120,16 +120,16 @@ class TestLogReplication(unittest.TestCase):
         leader = None
         follower = None
         client = None
-        url = "http://localhost:5000/execute_command"
+        url = "http://localhost:8000/execute_command"
         try:
-            leader = subprocess.Popen(["python", "Server.py", "localhost", "5001"], stdout=subprocess.PIPE)
-            follower = subprocess.Popen(["python", "Server.py", "localhost", "5002", "localhost", "5001"], stdout=subprocess.PIPE)
-            client = subprocess.Popen(["python", "Client.py", "localhost", "5000"], stdout=subprocess.PIPE)
+            leader = subprocess.Popen(["python", "Server.py", "localhost", "8001"], stdout=subprocess.PIPE)
+            follower = subprocess.Popen(["python", "Server.py", "localhost", "8002", "localhost", "8001"], stdout=subprocess.PIPE)
+            client = subprocess.Popen(["python", "Client.py", "localhost", "8000"], stdout=subprocess.PIPE)
             time.sleep(15)
             response = requests.post(url, json={
                 "address": {
                     "ip": "localhost",
-                    "port": 5001
+                    "port": 8001
                 },
                 "command": "ping",
             })
@@ -137,17 +137,17 @@ class TestLogReplication(unittest.TestCase):
             response_log_1 =  requests.post(url, json={
                 "address": {
                     "ip": "localhost",
-                    "port": 5001
+                    "port": 8001
                 },
                 "command": "request_log",
             })
             response_log_2 =  requests.post(url, json={
-                            "address": {
-                                "ip": "localhost",
-                                "port": 5002
-                            },
-                            "command": "request_log",
-             })
+                "address": {
+                    "ip": "localhost",
+                    "port": 8002
+                },
+                "command": "request_log",
+            })
             self.assertEqual(response_log_1.json()["data"], response_log_2.json()["data"])
         finally:
             if follower:
