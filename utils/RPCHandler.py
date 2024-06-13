@@ -26,6 +26,20 @@ class RPCHandler:
         except Exception as e:
             self.__logging(f"Error while sending request to {addr.ip}:{addr.port}: {e}")
             # TODO : Handle error
+    
+    async def __async_call(self, addr: Address, rpc_name: str, message: BaseMessage):
+        node = ServerProxy(f"http://{addr.ip}:{addr.port}")
+        json_request = self.message_parser.serialize(message)
+        self.__logging(f"Sending request to {addr.ip}:{addr.port}...")
+        rpc_function = getattr(node, rpc_name)
+
+        try:
+            response = await rpc_function(json_request)
+            self.__logging(f"Response from {addr.ip}:{addr.port}: {response}")
+            return response
+        except Exception as e:
+            self.__logging(f"Error while sending request to {addr.ip}:{addr.port}: {e}")
+            # TODO : Handle error
 
     def request(self, addr: Address, rpc_name: str, message: BaseMessage) -> BaseResponse:
         redirect_addr = addr
@@ -47,3 +61,17 @@ class RPCHandler:
 
         response["address"] = redirect_addr
         return response
+
+    async def async_request(self, addr: Address, rpc_name: str, message: BaseMessage) -> BaseResponse:
+        redirect_addr = addr
+        response = BaseResponse({
+            'status': ResponseStatus.REDIRECTED.value,
+            'address': redirect_addr,
+        })
+
+        while response["status"] == ResponseStatus.REDIRECTED.value:
+            redirect_addr = Address(
+                response["address"]["ip"],
+                response["address"]["port"],
+            )
+            response = self.message_parser.deserialize(await self.__async_call(redirect_addr, rpc_name, message))

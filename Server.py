@@ -1,17 +1,28 @@
 from Address       import Address
 from Raft          import RaftNode
 from xmlrpc.server import SimpleXMLRPCServer
+from xmlrpc.server import SimpleXMLRPCRequestHandler
 from app           import KVStore
 import sys
 import threading
 
 
-
 def start_serving(addr: Address, contact_node_addr: Address):
     print(f"Starting Raft Server at {addr.ip}:{addr.port}")
     _raftNode = RaftNode(KVStore(), addr, contact_node_addr)
+    
+    class PrintRequestHandler(SimpleXMLRPCRequestHandler):
+        def do_POST(self):
+            print(f"Received POST request from {self.client_address}")
+            # print received data
+            return SimpleXMLRPCRequestHandler.do_POST(self)
+
     try:
-        with SimpleXMLRPCServer((addr.ip, addr.port)) as server:
+        with SimpleXMLRPCServer((addr.ip, addr.port), requestHandler=PrintRequestHandler) as server:
+            #print server address
+            _ip = server.server_address[0]
+            _port = server.server_address[1]
+            print(f"\nServer started at {_ip}:{_port}\n")
             server.register_introspection_functions()
             server.register_instance(_raftNode)
             server.serve_forever()
