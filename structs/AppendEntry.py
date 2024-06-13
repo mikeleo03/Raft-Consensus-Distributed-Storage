@@ -36,5 +36,3 @@ class Response:
         return {
             "success" : self.success
         }
-    
-

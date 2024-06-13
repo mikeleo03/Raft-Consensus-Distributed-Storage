@@ -248,6 +248,7 @@ class RaftNode:
             prev_last_term = stable_vars["log"][prev_last_index - 1]["term"] if prev_last_index > 0 else 0
 
             try:
+                _dict_to_str : str = json.dumps(self.app.store)
                 response = self.__send_request({
                     "leader_addr": self.address,
                     "election_term": stable_vars["election_term"],
@@ -255,6 +256,7 @@ class RaftNode:
                     "prev_last_index": prev_last_index,
                     "entries": next_index,
                     "leader_commit": stable_vars["commit_length"],
+                    "app_store" : _dict_to_str
                 }, "heartbeat", addr)
                 if response is None:
                     self.__print_log(f"No response from {addr} for heartbeat.")
@@ -452,6 +454,8 @@ class RaftNode:
                 ack = int(request["prev_last_index"]) + len(request["entries"])
                 response["ack"] = ack
                 response["sync"] = True
+                _store_response : dict = json.loads(request["app_store"])
+                self.app.store = _store_response
             else:
                 response["ack"] = 0
                 response["sync"] = False
@@ -564,16 +568,11 @@ class RaftNode:
     def execute(self, json_request: str) -> str:
         request: ExecuteRequest = self.message_parser.deserialize(json_request)
         if (self.type != NodeType.LEADER) : # Redirect to leader if not leader
-            #reset socket timeout if redirecting to leader
-            socket.setdefaulttimeout(15*RaftNode.RPC_TIMEOUT)
-            resp = self.__send_request({"command": request["command"], "value" : ""}, "execute", self.cluster_leader_addr)
             response = ExecuteResponse({
-                "status": resp["status"],
-                "address": resp["address"],
-                "data": resp["data"]
+                "status": ResponseStatus.REDIRECTED.value,
+                "address": self.cluster_leader_addr,
+                "data": ""
             })
-            #restore socket timeout
-            socket.setdefaulttimeout(RaftNode.RPC_TIMEOUT)
             return self.message_parser.serialize(response)
         try:
             with self.stable_storage as stable_vars:
@@ -615,5 +614,3 @@ class RaftNode:
 
     def randomize_timeout(self):
         self.timeout_time = time.time() + RaftNode.ELECTION_TIMEOUT_MIN + (RaftNode.ELECTION_TIMEOUT_MAX - RaftNode.ELECTION_TIMEOUT_MIN) * random.random()
-
-            
